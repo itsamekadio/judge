@@ -11,12 +11,12 @@ import {
 
 // Environment variables or fallback defaults for JUDGE Educational Platform
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyJUDGE_PLACEHOLDER_KEY_FOR_DEV_TEST",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "judge-educational.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "judge-educational",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "judge-educational.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "100000000000",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:100000000000:web:abcdef123456"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCZXSOxcSgq4W4C_WRS3oebbCe5DBGb6y0",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "judge-platform.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "judge-platform",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "judge-platform.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "946727971005",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:946727971005:web:880c42ce68b3695443afd4"
 };
 
 // Check if actual configuration is present
