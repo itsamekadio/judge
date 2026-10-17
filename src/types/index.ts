@@ -9,23 +9,33 @@ export interface UserProfile {
   createdAt?: any;
 }
 
-export interface CourseUnit {
+// Curriculum / Course (المنهج / الكورس)
+export interface Curriculum {
   id: string;
   title: string;
   order: number;
-  description?: string;
   createdAt?: any;
 }
 
+// Chapter / Unit (الفصل / الباب)
+export interface Chapter {
+  id: string;
+  curriculumId: string;
+  title: string;
+  order: number;
+  createdAt?: any;
+}
+
+// Lesson / Video (الدرس / المحاضرة)
 export interface Lesson {
   id: string;
-  courseId: string;
+  curriculumId: string;
+  chapterId: string;
   title: string;
   youtubeId: string;
-  allowedGroups: string[];
+  allowedGroups: string[]; // ["الكل", "مجموعة 1", "مجموعة 2", "مجموعة 3"]
   order: number;
   duration?: string;
-  description?: string;
   createdAt?: any;
 }
 

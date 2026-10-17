@@ -2,352 +2,345 @@ import {
   collection, 
   doc, 
   getDocs, 
-  getDoc, 
   setDoc, 
   addDoc, 
   updateDoc, 
   deleteDoc, 
   query, 
   orderBy, 
-  where, 
   serverTimestamp,
   onSnapshot 
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
-import { CourseUnit, Lesson } from '../types';
+import { Curriculum, Chapter, Lesson } from '../types';
 
-const LOCAL_COURSES_KEY = 'judge_mock_courses';
-const LOCAL_LESSONS_KEY = 'judge_mock_lessons';
+const LOCAL_CURRICULUMS_KEY = 'judge_curriculums';
+const LOCAL_CHAPTERS_KEY = 'judge_chapters';
+const LOCAL_LESSONS_KEY = 'judge_lessons';
 
-// Default initial units and lessons conforming to the prompt specification
-export const INITIAL_SAMPLE_COURSES: CourseUnit[] = [
+// Initial clean default data
+export const INITIAL_CURRICULUMS: Curriculum[] = [
   {
-    id: "unit-1",
-    title: "الوحدة الأولى: النهايات والاتصال",
+    id: "curr-1",
+    title: "رياضيات 3 ثانوي - تفاضل وتكامل",
     order: 1,
-    description: "دراسة شاملة لمفاهيم النهايات الجبرية، اتصال الدوال، والنهايات عند اللانهاية.",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "unit-2",
-    title: "الوحدة الثانية: قواعد الاشتقاق وتطبيقاته",
-    order: 2,
-    description: "قواعد التفاضل، مشتقات الدوال المثلثية، والتطبيقات الهندسية والفيزيائية للمشتقة.",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "unit-3",
-    title: "الوحدة الثالثة: التكامل وتطبيقات المساحات",
-    order: 3,
-    description: "التكامل غير المحدود والمحدود، التكامل بالتعويض، وحساب المساحات وحجوم الأجسام الدورانية.",
     createdAt: new Date().toISOString()
   }
 ];
 
-export const INITIAL_SAMPLE_LESSONS: Lesson[] = [
+export const INITIAL_CHAPTERS: Chapter[] = [
   {
-    id: "lesson-1",
-    courseId: "unit-1",
+    id: "chap-1",
+    curriculumId: "curr-1",
+    title: "الفصل الأول: النهايات والاتصال",
+    order: 1,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: "chap-2",
+    curriculumId: "curr-1",
+    title: "الفصل الثاني: قواعد الاشتقاق وتطبيقاته",
+    order: 2,
+    createdAt: new Date().toISOString()
+  }
+];
+
+export const INITIAL_LESSONS: Lesson[] = [
+  {
+    id: "less-1",
+    curriculumId: "curr-1",
+    chapterId: "chap-1",
     title: "الدرس 1: مفهوم النهاية بيانياً وجبرياً",
     youtubeId: "dQw4w9WgXcQ",
     allowedGroups: ["الكل", "مجموعة 1", "مجموعة 2", "مجموعة 3"],
     order: 1,
     duration: "25 دقيقة",
-    description: "مقدمة تأسيسية لفهم سلوك الدالة عند الاقتراب من نقطة معينة وتحديد النهاية من اليمين واليسار.",
     createdAt: new Date().toISOString()
   },
   {
-    id: "lesson-2",
-    courseId: "unit-1",
-    title: "الدرس 2: نظريات النهايات وطرق التحليل",
+    id: "less-2",
+    curriculumId: "curr-1",
+    chapterId: "chap-1",
+    title: "الدرس 2: حل النهايات غير المعينة وطرق التحليل",
     youtubeId: "dQw4w9WgXcQ",
     allowedGroups: ["مجموعة 1", "مجموعة 2"],
     order: 2,
-    duration: "32 دقيقة",
-    description: "حل النهايات غير المعينة (0/0) باستخدام التحليل، الضرب في المرافق، والقسمة التركيبية.",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "lesson-3",
-    courseId: "unit-1",
-    title: "الدرس 3: اتصال الدوال عند نقطة وعلى فترة",
-    youtubeId: "dQw4w9WgXcQ",
-    allowedGroups: ["مجموعة 1"],
-    order: 3,
-    duration: "28 دقيقة",
-    description: "شروط الاتصال الثلاثة وتطبيقها على الدوال متعددة التعريف والدوال الجذرية والكسرية.",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "lesson-4",
-    courseId: "unit-2",
-    title: "الدرس 1: تعريف المشتقة وقواعد التفاضل الأساسية",
-    youtubeId: "dQw4w9WgXcQ",
-    allowedGroups: ["الكل", "مجموعة 1", "مجموعة 2", "مجموعة 3"],
-    order: 1,
-    duration: "35 دقيقة",
-    description: "المعنى الهندسي للمشتقة كمعامل ميل المماس وقواعد اشتقاق القوى وحاصل الضرب والقسمة.",
+    duration: "30 دقيقة",
     createdAt: new Date().toISOString()
   }
 ];
 
-// Helper to extract clean 11-char YouTube ID from any format
+// Helper to extract clean 11-char YouTube ID
 export function extractYouTubeId(input: string): string {
   if (!input) return '';
   const trimmed = input.trim();
-  
-  // If already an 11-character ID (standard YouTube alphanumeric with _ and -)
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
     return trimmed;
   }
-  
-  // Match standard youtube URLs: watch?v=, embed/, youtu.be/, shorts/
   const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
   const match = trimmed.match(regExp);
   if (match && match[1]) {
     return match[1];
   }
-  
   return trimmed;
 }
 
-// Local storage helpers
-function getLocalCourses(): CourseUnit[] {
-  const data = localStorage.getItem(LOCAL_COURSES_KEY);
+// Local storage caches
+function getLocalCurriculums(): Curriculum[] {
+  const data = localStorage.getItem(LOCAL_CURRICULUMS_KEY);
   if (!data) {
-    localStorage.setItem(LOCAL_COURSES_KEY, JSON.stringify(INITIAL_SAMPLE_COURSES));
-    return INITIAL_SAMPLE_COURSES;
+    localStorage.setItem(LOCAL_CURRICULUMS_KEY, JSON.stringify(INITIAL_CURRICULUMS));
+    return INITIAL_CURRICULUMS;
   }
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return INITIAL_SAMPLE_COURSES;
-  }
+  try { return JSON.parse(data); } catch { return INITIAL_CURRICULUMS; }
 }
 
-function saveLocalCourses(courses: CourseUnit[]) {
-  localStorage.setItem(LOCAL_COURSES_KEY, JSON.stringify(courses));
+function getLocalChapters(): Chapter[] {
+  const data = localStorage.getItem(LOCAL_CHAPTERS_KEY);
+  if (!data) {
+    localStorage.setItem(LOCAL_CHAPTERS_KEY, JSON.stringify(INITIAL_CHAPTERS));
+    return INITIAL_CHAPTERS;
+  }
+  try { return JSON.parse(data); } catch { return INITIAL_CHAPTERS; }
 }
 
 function getLocalLessons(): Lesson[] {
   const data = localStorage.getItem(LOCAL_LESSONS_KEY);
   if (!data) {
-    localStorage.setItem(LOCAL_LESSONS_KEY, JSON.stringify(INITIAL_SAMPLE_LESSONS));
-    return INITIAL_SAMPLE_LESSONS;
+    localStorage.setItem(LOCAL_LESSONS_KEY, JSON.stringify(INITIAL_LESSONS));
+    return INITIAL_LESSONS;
   }
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return INITIAL_SAMPLE_LESSONS;
-  }
-}
-
-function saveLocalLessons(lessons: Lesson[]) {
-  localStorage.setItem(LOCAL_LESSONS_KEY, JSON.stringify(lessons));
+  try { return JSON.parse(data); } catch { return INITIAL_LESSONS; }
 }
 
 export const CoursesService = {
-  // Subscribe to all course units
-  subscribeCourses: (callback: (courses: CourseUnit[]) => void) => {
+  // 1. Curriculums (المنهج)
+  subscribeCurriculums: (callback: (curriculums: Curriculum[]) => void) => {
     if (isFirebaseConfigured) {
       try {
-        const q = query(collection(db, 'courses'), orderBy('order', 'asc'));
+        const q = query(collection(db, 'curriculums'), orderBy('order', 'asc'));
         return onSnapshot(q, (snapshot) => {
-          if (snapshot.empty) {
-            // If firestore is empty, callback with empty or fallback
-            callback([]);
-          } else {
-            const courses: CourseUnit[] = snapshot.docs.map(doc => ({
+          if (!snapshot.empty) {
+            const list: Curriculum[] = snapshot.docs.map(doc => ({
               id: doc.id,
-              ...(doc.data() as Omit<CourseUnit, 'id'>)
+              ...(doc.data() as Omit<Curriculum, 'id'>)
             }));
-            callback(courses);
+            localStorage.setItem(LOCAL_CURRICULUMS_KEY, JSON.stringify(list));
+            callback(list);
+          } else {
+            callback(getLocalCurriculums());
           }
         }, (error) => {
-          console.warn("Firestore courses snapshot error, falling back to local:", error);
-          callback(getLocalCourses());
+          console.warn("Curriculums snapshot error:", error);
+          callback(getLocalCurriculums());
         });
-      } catch (err) {
-        console.warn("Using local courses fallback:", err);
+      } catch (e) {
+        console.warn(e);
       }
     }
-    callback(getLocalCourses());
+    callback(getLocalCurriculums());
     return () => {};
   },
 
-  // Subscribe to all lessons
+  addCurriculum: async (title: string, order: number = 1): Promise<Curriculum> => {
+    const id = `curr-${Date.now()}`;
+    const newCurriculum: Curriculum = {
+      id,
+      title: title.trim(),
+      order,
+      createdAt: new Date().toISOString()
+    };
+
+    if (isFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'curriculums', id), {
+          id,
+          title: title.trim(),
+          order,
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn('Error saving curriculum to Firestore:', err);
+      }
+    }
+
+    const current = getLocalCurriculums();
+    const updated = [...current.filter(c => c.id !== id), newCurriculum].sort((a, b) => a.order - b.order);
+    localStorage.setItem(LOCAL_CURRICULUMS_KEY, JSON.stringify(updated));
+    return newCurriculum;
+  },
+
+  deleteCurriculum: async (id: string): Promise<void> => {
+    if (isFirebaseConfigured) {
+      try {
+        await deleteDoc(doc(db, 'curriculums', id));
+      } catch (err) {
+        console.warn('Error deleting curriculum from Firestore:', err);
+      }
+    }
+    const current = getLocalCurriculums();
+    localStorage.setItem(LOCAL_CURRICULUMS_KEY, JSON.stringify(current.filter(c => c.id !== id)));
+  },
+
+  // 2. Chapters (الفصل)
+  subscribeChapters: (callback: (chapters: Chapter[]) => void) => {
+    if (isFirebaseConfigured) {
+      try {
+        const q = query(collection(db, 'chapters'), orderBy('order', 'asc'));
+        return onSnapshot(q, (snapshot) => {
+          if (!snapshot.empty) {
+            const list: Chapter[] = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...(doc.data() as Omit<Chapter, 'id'>)
+            }));
+            localStorage.setItem(LOCAL_CHAPTERS_KEY, JSON.stringify(list));
+            callback(list);
+          } else {
+            callback(getLocalChapters());
+          }
+        }, (error) => {
+          console.warn("Chapters snapshot error:", error);
+          callback(getLocalChapters());
+        });
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    callback(getLocalChapters());
+    return () => {};
+  },
+
+  addChapter: async (curriculumId: string, title: string, order: number = 1): Promise<Chapter> => {
+    const id = `chap-${Date.now()}`;
+    const newChapter: Chapter = {
+      id,
+      curriculumId,
+      title: title.trim(),
+      order,
+      createdAt: new Date().toISOString()
+    };
+
+    if (isFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'chapters', id), {
+          id,
+          curriculumId,
+          title: title.trim(),
+          order,
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn('Error saving chapter to Firestore:', err);
+      }
+    }
+
+    const current = getLocalChapters();
+    const updated = [...current.filter(c => c.id !== id), newChapter].sort((a, b) => a.order - b.order);
+    localStorage.setItem(LOCAL_CHAPTERS_KEY, JSON.stringify(updated));
+    return newChapter;
+  },
+
+  deleteChapter: async (id: string): Promise<void> => {
+    if (isFirebaseConfigured) {
+      try {
+        await deleteDoc(doc(db, 'chapters', id));
+      } catch (err) {
+        console.warn('Error deleting chapter from Firestore:', err);
+      }
+    }
+    const current = getLocalChapters();
+    localStorage.setItem(LOCAL_CHAPTERS_KEY, JSON.stringify(current.filter(c => c.id !== id)));
+  },
+
+  // 3. Lessons / Videos (الدرس / الفيديو)
   subscribeLessons: (callback: (lessons: Lesson[]) => void) => {
     if (isFirebaseConfigured) {
       try {
         const q = query(collection(db, 'lessons'), orderBy('order', 'asc'));
         return onSnapshot(q, (snapshot) => {
-          if (snapshot.empty) {
-            callback([]);
-          } else {
-            const lessons: Lesson[] = snapshot.docs.map(doc => ({
+          if (!snapshot.empty) {
+            const list: Lesson[] = snapshot.docs.map(doc => ({
               id: doc.id,
               ...(doc.data() as Omit<Lesson, 'id'>)
             }));
-            callback(lessons);
+            localStorage.setItem(LOCAL_LESSONS_KEY, JSON.stringify(list));
+            callback(list);
+          } else {
+            callback(getLocalLessons());
           }
         }, (error) => {
-          console.warn("Firestore lessons snapshot error, falling back to local:", error);
+          console.warn("Lessons snapshot error:", error);
           callback(getLocalLessons());
         });
-      } catch (err) {
-        console.warn("Using local lessons fallback:", err);
+      } catch (e)
+      {
+        console.warn(e);
       }
     }
     callback(getLocalLessons());
     return () => {};
   },
 
-  // Add course unit
-  addCourse: async (data: Omit<CourseUnit, 'id'>, customId?: string): Promise<CourseUnit> => {
-    const id = customId?.trim() || `unit-${Date.now()}`;
-    const newCourse: CourseUnit = {
+  addLesson: async (data: Omit<Lesson, 'id'>): Promise<Lesson> => {
+    const cleanYt = extractYouTubeId(data.youtubeId);
+    let id = `less-${Date.now()}`;
+
+    const newLesson: Lesson = {
       ...data,
       id,
+      youtubeId: cleanYt,
+      allowedGroups: data.allowedGroups?.length ? data.allowedGroups : ['الكل'],
+      order: Number(data.order) || 1,
       createdAt: new Date().toISOString()
     };
-
-    if (isFirebaseConfigured) {
-      try {
-        await setDoc(doc(db, 'courses', id), {
-          id,
-          title: data.title,
-          order: Number(data.order) || 1,
-          description: data.description || '',
-          createdAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.warn("Error adding course to Firestore, saving locally:", err);
-      }
-    }
-
-    // Always update local cache
-    const current = getLocalCourses();
-    const updated = [...current.filter(c => c.id !== id), newCourse].sort((a, b) => a.order - b.order);
-    saveLocalCourses(updated);
-    return newCourse;
-  },
-
-  // Update course unit
-  updateCourse: async (id: string, data: Partial<CourseUnit>): Promise<void> => {
-    if (isFirebaseConfigured) {
-      try {
-        await updateDoc(doc(db, 'courses', id), {
-          ...data,
-          ...(data.order ? { order: Number(data.order) } : {})
-        });
-      } catch (err) {
-        console.warn("Error updating course in Firestore:", err);
-      }
-    }
-
-    const current = getLocalCourses();
-    const updated = current.map(c => c.id === id ? { ...c, ...data } : c);
-    saveLocalCourses(updated);
-  },
-
-  // Delete course unit and its associated lessons
-  deleteCourse: async (id: string): Promise<void> => {
-    if (isFirebaseConfigured) {
-      try {
-        await deleteDoc(doc(db, 'courses', id));
-      } catch (err) {
-        console.warn("Error deleting course from Firestore:", err);
-      }
-    }
-
-    const current = getLocalCourses();
-    saveLocalCourses(current.filter(c => c.id !== id));
-
-    // Also delete associated lessons
-    const lessons = getLocalLessons();
-    const remainingLessons = lessons.filter(l => l.courseId !== id);
-    saveLocalLessons(remainingLessons);
-  },
-
-  // Add lesson
-  addLesson: async (data: Omit<Lesson, 'id'>): Promise<Lesson> => {
-    const lessonData = {
-      ...data,
-      youtubeId: extractYouTubeId(data.youtubeId),
-      order: Number(data.order) || 1,
-      allowedGroups: Array.isArray(data.allowedGroups) && data.allowedGroups.length > 0 
-        ? data.allowedGroups 
-        : ['الكل']
-    };
-
-    let id = `lesson-${Date.now()}`;
 
     if (isFirebaseConfigured) {
       try {
         const docRef = await addDoc(collection(db, 'lessons'), {
-          ...lessonData,
+          curriculumId: data.curriculumId,
+          chapterId: data.chapterId,
+          title: data.title.trim(),
+          youtubeId: cleanYt,
+          allowedGroups: newLesson.allowedGroups,
+          order: newLesson.order,
+          duration: data.duration || '30 دقيقة',
           createdAt: serverTimestamp()
         });
         id = docRef.id;
+        newLesson.id = id;
       } catch (err) {
-        console.warn("Error adding lesson to Firestore, saving locally:", err);
+        console.warn('Error adding lesson to Firestore:', err);
       }
     }
-
-    const newLesson: Lesson = {
-      ...lessonData,
-      id,
-      createdAt: new Date().toISOString()
-    };
 
     const current = getLocalLessons();
     const updated = [...current, newLesson].sort((a, b) => a.order - b.order);
-    saveLocalLessons(updated);
+    localStorage.setItem(LOCAL_LESSONS_KEY, JSON.stringify(updated));
     return newLesson;
   },
 
-  // Update lesson
   updateLesson: async (id: string, data: Partial<Lesson>): Promise<void> => {
-    const updatePayload = {
-      ...data,
-      ...(data.youtubeId ? { youtubeId: extractYouTubeId(data.youtubeId) } : {}),
-      ...(data.order ? { order: Number(data.order) } : {})
-    };
-
     if (isFirebaseConfigured) {
       try {
-        await updateDoc(doc(db, 'lessons', id), updatePayload);
+        await updateDoc(doc(db, 'lessons', id), data);
       } catch (err) {
-        console.warn("Error updating lesson in Firestore:", err);
+        console.warn('Error updating lesson in Firestore:', err);
       }
     }
-
     const current = getLocalLessons();
-    const updated = current.map(l => l.id === id ? { ...l, ...updatePayload } : l);
-    saveLocalLessons(updated);
+    const updated = current.map(l => l.id === id ? { ...l, ...data } : l);
+    localStorage.setItem(LOCAL_LESSONS_KEY, JSON.stringify(updated));
   },
 
-  // Delete lesson
   deleteLesson: async (id: string): Promise<void> => {
     if (isFirebaseConfigured) {
       try {
         await deleteDoc(doc(db, 'lessons', id));
       } catch (err) {
-        console.warn("Error deleting lesson from Firestore:", err);
+        console.warn('Error deleting lesson from Firestore:', err);
       }
     }
-
     const current = getLocalLessons();
-    saveLocalLessons(current.filter(l => l.id !== id));
-  },
-
-  // Seed default demonstration courses and lessons if empty
-  seedInitialData: async (): Promise<void> => {
-    for (const course of INITIAL_SAMPLE_COURSES) {
-      await CoursesService.addCourse(course, course.id);
-    }
-    for (const lesson of INITIAL_SAMPLE_LESSONS) {
-      await CoursesService.addLesson(lesson);
-    }
+    localStorage.setItem(LOCAL_LESSONS_KEY, JSON.stringify(current.filter(l => l.id !== id)));
   }
 };
