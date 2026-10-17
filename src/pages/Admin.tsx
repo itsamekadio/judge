@@ -24,6 +24,9 @@ export const Admin: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
 
+  // Global error state for Firestore failures
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
   // 1. Add Curriculum state
   const [newCurriculumTitle, setNewCurriculumTitle] = useState('');
   const [curriculumSuccess, setCurriculumSuccess] = useState('');
@@ -81,10 +84,16 @@ export const Admin: React.FC = () => {
   const handleAddCurriculum = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCurriculumTitle.trim()) return;
-    await CoursesService.addCurriculum(newCurriculumTitle.trim(), curriculums.length + 1);
-    setCurriculumSuccess('تمت إضافة المنهج بنجاح!');
-    setNewCurriculumTitle('');
-    setTimeout(() => setCurriculumSuccess(''), 3000);
+    setGlobalError(null);
+    try {
+      await CoursesService.addCurriculum(newCurriculumTitle.trim(), curriculums.length + 1);
+      setCurriculumSuccess('تمت إضافة المنهج بنجاح!');
+      setNewCurriculumTitle('');
+      setTimeout(() => setCurriculumSuccess(''), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setGlobalError(`خطأ في إضافة المنهج: ${err?.code || err?.message || 'تحقق من إعدادات Firebase'}`);
+    }
   };
 
   // 2. Add Chapter
@@ -94,11 +103,17 @@ export const Admin: React.FC = () => {
       alert('يرجى اختيار المنهج وكتابة اسم الفصل');
       return;
     }
-    const currChapters = chapters.filter(ch => ch.curriculumId === chapterCurriculumId);
-    await CoursesService.addChapter(chapterCurriculumId, newChapterTitle.trim(), currChapters.length + 1);
-    setChapterSuccess('تمت إضافة الفصل بنجاح!');
-    setNewChapterTitle('');
-    setTimeout(() => setChapterSuccess(''), 3000);
+    setGlobalError(null);
+    try {
+      const currChapters = chapters.filter(ch => ch.curriculumId === chapterCurriculumId);
+      await CoursesService.addChapter(chapterCurriculumId, newChapterTitle.trim(), currChapters.length + 1);
+      setChapterSuccess('تمت إضافة الفصل بنجاح!');
+      setNewChapterTitle('');
+      setTimeout(() => setChapterSuccess(''), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setGlobalError(`خطأ في إضافة الفصل: ${err?.code || err?.message || 'تحقق من إعدادات Firebase'}`);
+    }
   };
 
   // 3. Add Video
@@ -119,20 +134,25 @@ export const Admin: React.FC = () => {
       return;
     }
 
-    const chapterLessons = lessons.filter(l => l.chapterId === selectedChapterId);
-    await CoursesService.addLesson({
-      curriculumId: selectedCurriculumId,
-      chapterId: selectedChapterId,
-      title: videoTitle.trim(),
-      youtubeId: cleanYt,
-      duration: videoDuration || '30 دقيقة',
-      order: chapterLessons.length + 1
-    });
-
-    setVideoSuccess('تم نشر الفيديو وربطه بالمنهج والفصل فوراً!');
-    setVideoTitle('');
-    setYoutubeInput('');
-    setTimeout(() => setVideoSuccess(''), 4000);
+    setGlobalError(null);
+    try {
+      const chapterLessons = lessons.filter(l => l.chapterId === selectedChapterId);
+      await CoursesService.addLesson({
+        curriculumId: selectedCurriculumId,
+        chapterId: selectedChapterId,
+        title: videoTitle.trim(),
+        youtubeId: cleanYt,
+        duration: videoDuration || '30 دقيقة',
+        order: chapterLessons.length + 1
+      });
+      setVideoSuccess('تم نشر الفيديو وربطه بالمنهج والفصل فوراً!');
+      setVideoTitle('');
+      setYoutubeInput('');
+      setTimeout(() => setVideoSuccess(''), 4000);
+    } catch (err: any) {
+      console.error(err);
+      setGlobalError(`خطأ في إضافة الفيديو: ${err?.code || err?.message || 'تحقق من إعدادات Firebase'}`);
+    }
   };
 
   const previewId = extractYouTubeId(youtubeInput);
@@ -157,6 +177,38 @@ export const Admin: React.FC = () => {
           <span>{curriculums.length} مناهج • {chapters.length} فصول</span>
         </div>
       </div>
+
+      {/* Global Error Banner — shown when Firestore write fails (e.g. permissions) */}
+      {globalError && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm space-y-2">
+          <div className="flex items-center gap-2 font-bold">
+            <span>⚠️</span>
+            <span>خطأ في قاعدة البيانات (Firestore Error)</span>
+          </div>
+          <p className="text-xs font-mono break-all">{globalError}</p>
+          <p className="text-xs text-rose-200">
+            الحل: اذهب إلى{' '}
+            <a
+              href="https://console.firebase.google.com/project/judge-platform/firestore/rules"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline text-amber-300 font-bold"
+            >
+              Firebase Console → Firestore → Rules
+            </a>
+            {' '}وانسخ القواعد المكتوبة أدناه واضغط Publish
+          </p>
+          <pre className="text-[11px] bg-slate-950 p-3 rounded-xl text-emerald-300 overflow-x-auto">{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}</pre>
+          <button onClick={() => setGlobalError(null)} className="text-xs text-slate-400 underline">إخفاء</button>
+        </div>
+      )}
 
       {/* Row: Add Curriculum (Text) + Add Chapter (Text) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
