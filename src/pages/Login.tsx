@@ -11,9 +11,7 @@ import {
   BookOpen, 
   ArrowLeft, 
   AlertCircle, 
-  CheckCircle2,
-  ShieldCheck,
-  KeyRound
+  CheckCircle2
 } from 'lucide-react';
 
 export const Login: React.FC = () => {
@@ -69,34 +67,6 @@ export const Login: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'حدث خطأ أثناء الدخول');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 1-Click Admin Login
-  const handleQuickAdmin = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      await login(DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASS);
-      navigate('/admin', { replace: true });
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 1-Click Student Login
-  const handleQuickStudent = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      await login('student@judge.com', '123456');
-      navigate('/dashboard', { replace: true });
-    } catch (e: any) {
-      setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -255,34 +225,6 @@ export const Login: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* 1-Click Login Shortcuts */}
-          <div className="pt-4 border-t border-slate-800 space-y-2">
-            <span className="text-[11px] text-slate-400 block font-semibold flex items-center gap-1">
-              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-              <span>دخول سريع فوري (بنقرة واحدة):</span>
-            </span>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleQuickAdmin}
-                className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <ShieldCheck className="w-4 h-4 text-amber-400" />
-                <span>دخول المشرف (Admin)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleQuickStudent}
-                className="p-2 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <BookOpen className="w-4 h-4 text-sky-400" />
-                <span>دخول طالب تجريبي</span>
-              </button>
-            </div>
-          </div>
 
         </div>
 
