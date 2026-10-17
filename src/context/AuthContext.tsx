@@ -46,12 +46,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Sync user profile from Firestore when Firebase Auth state changes
+  // Sync user profile from Firestore in background
   const syncUserFromFirestore = async (uid: string, email: string) => {
+    const isDefaultAdmin = email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase();
+
     try {
       const userRef = doc(db, 'users', uid);
       const snap = await getDoc(userRef);
-      const isDefaultAdmin = email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase();
 
       if (snap.exists()) {
         const data = snap.data();
@@ -75,13 +76,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: isDefaultAdmin ? 'admin' : 'student',
           createdAt: serverTimestamp()
         };
-        await setDoc(userRef, profile, { merge: true });
+        setDoc(userRef, profile, { merge: true }).catch(() => {});
         setCurrentUser(profile);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
         return profile;
       }
     } catch (err) {
-      console.warn('Firestore profile sync note:', err);
+      console.warn('Firestore user profile sync warning (rules notice):', err);
     }
   };
 
@@ -91,17 +92,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setFirebaseUser(user);
         if (user && user.email) {
           syncUserFromFirestore(user.uid, user.email);
-        } else {
-          // If no active Firebase session and not admin in localStorage, clear
-          const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-          if (saved) {
-            try {
-              const parsed = JSON.parse(saved);
-              if (parsed.email?.toLowerCase() !== DEFAULT_ADMIN_EMAIL.toLowerCase()) {
-                // Keep session if valid
-              }
-            } catch (e) {}
-          }
         }
       });
       return () => unsubscribe();
@@ -110,39 +100,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Strict Login: Rejects if password is wrong
+  // Strict Login
   const login = async (email: string, pass: string): Promise<UserProfile> => {
     const cleanEmail = email.trim().toLowerCase();
     const isDefaultAdmin = cleanEmail === DEFAULT_ADMIN_EMAIL.toLowerCase();
 
-    // 1. Try Firebase Authentication
+    // 1. Authenticate with Firebase Authentication
     try {
       const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       const uid = cred.user.uid;
       
-      // Fetch user profile from Firestore
-      const userRef = doc(db, 'users', uid);
-      const snap = await getDoc(userRef);
-      
-      let profile: UserProfile;
-      if (snap.exists()) {
-        const data = snap.data();
-        profile = {
-          uid,
-          email: cleanEmail,
-          fullName: data.fullName || (isDefaultAdmin ? 'Eng. Abdelrahman Elkady' : 'طالب'),
-          role: isDefaultAdmin ? 'admin' : (data.role || 'student'),
-          curriculumId: data.curriculumId,
-          curriculumTitle: data.curriculumTitle
-        };
-      } else {
-        profile = {
-          uid,
-          email: cleanEmail,
-          fullName: isDefaultAdmin ? 'Eng. Abdelrahman Elkady / المهندس عبد الرحمن القاضي' : 'طالب',
-          role: isDefaultAdmin ? 'admin' : 'student'
-        };
-        await setDoc(userRef, profile, { merge: true });
+      // Default initial profile from auth
+      let profile: UserProfile = {
+        uid,
+        email: cleanEmail,
+        fullName: isDefaultAdmin ? 'Eng. Abdelrahman Elkady' : cleanEmail.split('@')[0],
+        role: isDefaultAdmin ? 'admin' : 'student'
+      };
+
+      // Try fetching extra profile fields from Firestore without letting permission errors crash login
+      try {
+        const userRef = doc(db, 'users', uid);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          profile = {
+            ...profile,
+            fullName: data.fullName || profile.fullName,
+            role: isDefaultAdmin ? 'admin' : (data.role || 'student'),
+            curriculumId: data.curriculumId,
+            curriculumTitle: data.curriculumTitle
+          };
+        }
+      } catch (firestoreErr) {
+        console.warn('Firestore profile read permission notice:', firestoreErr);
       }
 
       setCurrentUser(profile);
@@ -150,10 +141,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return profile;
 
     } catch (firebaseErr: any) {
-      // If credentials belong to default admin and it wasn't created in Firebase Auth yet
+      // If credentials belong to default admin and it wasn't registered in Firebase Auth yet
       if (isDefaultAdmin) {
         if (pass === DEFAULT_ADMIN_PASS) {
-          // Password is correct, auto-create admin in Firebase Auth
           try {
             const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
             const adminProfile: UserProfile = {
@@ -163,12 +153,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               role: 'admin',
               createdAt: serverTimestamp()
             };
-            await setDoc(doc(db, 'users', cred.user.uid), adminProfile);
+            setDoc(doc(db, 'users', cred.user.uid), adminProfile).catch(() => {});
             setCurrentUser(adminProfile);
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(adminProfile));
             return adminProfile;
           } catch (createErr) {
-            // If already in Auth but wrong password was given, it falls through to throw below
             const adminProfile: UserProfile = {
               uid: 'admin-elkady',
               email: cleanEmail,
@@ -180,12 +169,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return adminProfile;
           }
         } else {
-          // Admin entered WRONG password! Strictly reject!
+          // Admin typed the wrong password!
           throw new Error('كلمة المرور غير صحيحة لحساب المشرف / Incorrect admin password');
         }
       }
 
-      // Check standard Firebase error codes
+      // Check standard Firebase Auth errors - strictly report them!
       if (
         firebaseErr.code === 'auth/wrong-password' || 
         firebaseErr.code === 'auth/invalid-credential' ||
@@ -196,10 +185,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('البريد الإلكتروني غير مسجل. يرجى إنشاء حساب جديد أولاً.');
       } else if (firebaseErr.code === 'auth/invalid-email') {
         throw new Error('صيغة البريد الإلكتروني غير صالحة');
+      } else if (firebaseErr.code === 'auth/too-many-requests') {
+        throw new Error('تم حظر المحاولات مؤقتاً بسبب تكرار المحاولات الخاطئة. انتظر لحظات وحاول ثانية.');
       }
 
-      // Throw exact error - NEVER log in with wrong credentials
-      throw new Error('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      throw new Error(firebaseErr.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
   };
 
@@ -216,6 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const role: UserRole = isDefaultAdmin ? 'admin' : 'student';
 
     try {
+      // 1. Create account in Firebase Authentication
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
       const uid = cred.user.uid;
 
@@ -226,19 +217,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role,
         curriculumId,
         curriculumTitle,
-        createdAt: serverTimestamp()
+        createdAt: new Date().toISOString()
       };
 
-      // Save user to Firestore users collection
-      const userRef = doc(db, 'users', uid);
-      await setDoc(userRef, {
-        email: cleanEmail,
-        fullName: profile.fullName,
-        role,
-        curriculumId: curriculumId || '',
-        curriculumTitle: curriculumTitle || '',
-        createdAt: serverTimestamp()
-      });
+      // 2. Save profile in Firestore users collection (safely caught if rules are still locked)
+      try {
+        const userRef = doc(db, 'users', uid);
+        await setDoc(userRef, {
+          email: cleanEmail,
+          fullName: profile.fullName,
+          role,
+          curriculumId: curriculumId || '',
+          curriculumTitle: curriculumTitle || '',
+          createdAt: serverTimestamp()
+        });
+      } catch (firestoreErr) {
+        console.warn('Firestore profile write permission notice (update Firestore rules):', firestoreErr);
+      }
 
       setCurrentUser(profile);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
