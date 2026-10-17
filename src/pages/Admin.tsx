@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   CoursesService, 
-  extractYouTubeId, 
-  getLocalCurriculums, 
-  getLocalChapters, 
-  getLocalLessons 
+  extractYouTubeId
 } from '../lib/coursesService';
 import { Curriculum, Chapter, Lesson } from '../types';
 import { 
@@ -22,10 +19,10 @@ import {
 export const Admin: React.FC = () => {
   const { currentUser, isAdmin } = useAuth();
 
-  // Initialize immediately from synchronous local data for zero-delay loading
-  const [curriculums, setCurriculums] = useState<Curriculum[]>(getLocalCurriculums());
-  const [chapters, setChapters] = useState<Chapter[]>(getLocalChapters());
-  const [lessons, setLessons] = useState<Lesson[]>(getLocalLessons());
+  // Initialize from Firestore via subscriptions (no stale local cache)
+  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
 
   // 1. Add Curriculum state
   const [newCurriculumTitle, setNewCurriculumTitle] = useState('');

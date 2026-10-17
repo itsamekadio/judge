@@ -3,10 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   CoursesService, 
-  extractYouTubeId, 
-  getLocalCurriculums, 
-  getLocalChapters, 
-  getLocalLessons 
+  extractYouTubeId
 } from '../lib/coursesService';
 import { Curriculum, Chapter, Lesson } from '../types';
 import { 
@@ -22,14 +19,12 @@ import {
 export const Dashboard: React.FC = () => {
   const { currentUser, isAdmin, updateCurriculum } = useAuth();
   
-  // Initialize synchronously with zero lag
-  const [curriculums, setCurriculums] = useState<Curriculum[]>(getLocalCurriculums());
-  const [chapters, setChapters] = useState<Chapter[]>(getLocalChapters());
-  const [lessons, setLessons] = useState<Lesson[]>(getLocalLessons());
+  // State filled by Firestore real-time subscriptions
+  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   
-  const [selectedCurriculumId, setSelectedCurriculumId] = useState<string>(() => {
-    return currentUser?.curriculumId || (curriculums[0]?.id || '');
-  });
+  const [selectedCurriculumId, setSelectedCurriculumId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {

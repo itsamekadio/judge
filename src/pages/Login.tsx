@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASS } from '../context/AuthContext';
-import { CoursesService, getLocalCurriculums } from '../lib/coursesService';
+import { CoursesService } from '../lib/coursesService';
 import { Curriculum } from '../types';
 import { 
   GraduationCap, 
@@ -20,8 +20,8 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   
-  // Curriculums available for student registration
-  const [curriculums, setCurriculums] = useState<Curriculum[]>(getLocalCurriculums());
+  // Curriculums available for student registration — filled from Firestore
+  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<string>('');
 
   const [error, setError] = useState<string | null>(null);

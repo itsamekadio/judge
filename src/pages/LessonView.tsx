@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  CoursesService, 
-  getLocalCurriculums, 
-  getLocalChapters, 
-  getLocalLessons 
-} from '../lib/coursesService';
+import { CoursesService } from '../lib/coursesService';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { Curriculum, Chapter, Lesson } from '../types';
 import { 
@@ -23,10 +18,10 @@ export const LessonView: React.FC = () => {
   const { lessonId } = useParams<{ lessonId: string }>();
   const navigate = useNavigate();
 
-  // Instant synchronous initialization
-  const [curriculums, setCurriculums] = useState<Curriculum[]>(getLocalCurriculums());
-  const [chapters, setChapters] = useState<Chapter[]>(getLocalChapters());
-  const [lessons, setLessons] = useState<Lesson[]>(getLocalLessons());
+  // State filled by Firestore real-time subscriptions
+  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
 
   useEffect(() => {
     const unsubCurrs = CoursesService.subscribeCurriculums((c) => setCurriculums(c));
