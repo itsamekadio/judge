@@ -1,15 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { 
-  getAuth, 
-  connectAuthEmulator 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  connectFirestoreEmulator, 
-  enableIndexedDbPersistence 
-} from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
-// Environment variables or fallback defaults for JUDGE Educational Platform
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCZXSOxcSgq4W4C_WRS3oebbCe5DBGb6y0",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "judge-platform.firebaseapp.com",
@@ -19,34 +11,13 @@ export const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:946727971005:web:880c42ce68b3695443afd4"
 };
 
-// Check if actual configuration is present
-export const isFirebaseConfigured = Boolean(
-  import.meta.env.VITE_FIREBASE_API_KEY && 
-  import.meta.env.VITE_FIREBASE_PROJECT_ID
-);
+export const isFirebaseConfigured = true;
 
-// Initialize Firebase App singleton
+// Initialize singleton app
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firebase Authentication
+// Authentication
 export const auth = getAuth(app);
 
-// Initialize Cloud Firestore
+// Cloud Firestore
 export const db = getFirestore(app);
-
-// Try enabling offline persistence for zero-cost caching
-try {
-  if (typeof window !== 'undefined') {
-    enableIndexedDbPersistence(db).catch((err) => {
-      if (err.code === 'failed-precondition') {
-        // Multiple tabs open, persistence can only be enabled in one tab at a time.
-        console.warn('Firestore offline persistence failed: Multiple tabs open');
-      } else if (err.code === 'unimplemented') {
-        // The current browser does not support all of the features required to enable persistence
-        console.warn('Firestore offline persistence is not supported in this browser');
-      }
-    });
-  }
-} catch (e) {
-  // Silent catch
-}

@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { CoursesService, extractYouTubeId } from '../lib/coursesService';
-import { Curriculum, Chapter, Lesson, STUDENT_GROUPS } from '../types';
+import { 
+  CoursesService, 
+  extractYouTubeId, 
+  getLocalCurriculums, 
+  getLocalChapters, 
+  getLocalLessons 
+} from '../lib/coursesService';
+import { Curriculum, Chapter, Lesson } from '../types';
 import { 
   ShieldCheck, 
   Plus, 
@@ -10,44 +16,40 @@ import {
   FolderPlus, 
   Trash2, 
   CheckCircle, 
-  Users,
-  Eye,
-  Film
+  Eye
 } from 'lucide-react';
 
-const ALL_PERMISSION_GROUPS = ['الكل', ...STUDENT_GROUPS] as const;
-
 export const Admin: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
 
-  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
+  // Initialize immediately from synchronous local data for zero-delay loading
+  const [curriculums, setCurriculums] = useState<Curriculum[]>(getLocalCurriculums());
+  const [chapters, setChapters] = useState<Chapter[]>(getLocalChapters());
+  const [lessons, setLessons] = useState<Lesson[]>(getLocalLessons());
 
-  // 1. New Curriculum Text State
+  // 1. Add Curriculum state
   const [newCurriculumTitle, setNewCurriculumTitle] = useState('');
   const [curriculumSuccess, setCurriculumSuccess] = useState('');
 
-  // 2. New Chapter State
+  // 2. Add Chapter state
   const [chapterCurriculumId, setChapterCurriculumId] = useState('');
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [chapterSuccess, setChapterSuccess] = useState('');
 
-  // 3. New Video / Lesson State
+  // 3. Add Video state
   const [selectedCurriculumId, setSelectedCurriculumId] = useState('');
   const [selectedChapterId, setSelectedChapterId] = useState('');
   const [videoTitle, setVideoTitle] = useState('');
   const [youtubeInput, setYoutubeInput] = useState('');
   const [videoDuration, setVideoDuration] = useState('30 دقيقة');
-  const [selectedGroups, setSelectedGroups] = useState<string[]>(['الكل']);
   const [videoSuccess, setVideoSuccess] = useState('');
 
   useEffect(() => {
     const unsubCurrs = CoursesService.subscribeCurriculums((c) => {
       setCurriculums(c);
       if (c.length > 0) {
-        if (!chapterCurriculumId) setChapterCurriculumId(c[0].id);
-        if (!selectedCurriculumId) setSelectedCurriculumId(c[0].id);
+        setChapterCurriculumId(prev => prev || c[0].id);
+        setSelectedCurriculumId(prev => prev || c[0].id);
       }
     });
 
@@ -78,7 +80,7 @@ export const Admin: React.FC = () => {
     }
   }, [selectedCurriculumId, chapters]);
 
-  // Add Curriculum Handler
+  // 1. Add Curriculum
   const handleAddCurriculum = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCurriculumTitle.trim()) return;
@@ -88,7 +90,7 @@ export const Admin: React.FC = () => {
     setTimeout(() => setCurriculumSuccess(''), 3000);
   };
 
-  // Add Chapter Handler
+  // 2. Add Chapter
   const handleAddChapter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chapterCurriculumId || !newChapterTitle.trim()) {
@@ -102,31 +104,7 @@ export const Admin: React.FC = () => {
     setTimeout(() => setChapterSuccess(''), 3000);
   };
 
-  // Group toggle
-  const handleGroupToggle = (grp: string) => {
-    if (grp === 'الكل') {
-      if (selectedGroups.includes('الكل')) {
-        setSelectedGroups(['مجموعة 1']);
-      } else {
-        setSelectedGroups(['الكل', ...STUDENT_GROUPS]);
-      }
-      return;
-    }
-
-    let updated = [...selectedGroups];
-    if (updated.includes(grp)) {
-      updated = updated.filter(g => g !== grp && g !== 'الكل');
-      if (updated.length === 0) updated = ['مجموعة 1'];
-    } else {
-      updated.push(grp);
-      if (STUDENT_GROUPS.every(g => updated.includes(g)) && !updated.includes('الكل')) {
-        updated.push('الكل');
-      }
-    }
-    setSelectedGroups(updated);
-  };
-
-  // Add Video Handler
+  // 3. Add Video
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCurriculumId || !selectedChapterId) {
@@ -151,11 +129,10 @@ export const Admin: React.FC = () => {
       title: videoTitle.trim(),
       youtubeId: cleanYt,
       duration: videoDuration || '30 دقيقة',
-      allowedGroups: selectedGroups,
       order: chapterLessons.length + 1
     });
 
-    setVideoSuccess('تم نشر الفيديو بنجاح وربطه بالمنهج والفصل!');
+    setVideoSuccess('تم نشر الفيديو وربطه بالمنهج والفصل فوراً!');
     setVideoTitle('');
     setYoutubeInput('');
     setTimeout(() => setVideoSuccess(''), 4000);
@@ -167,19 +144,19 @@ export const Admin: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       
-      {/* Top Header */}
-      <div className="glass-panel p-6 rounded-2xl border border-amber-500/30 flex items-center justify-between">
+      {/* Admin Header */}
+      <div className="glass-panel p-6 rounded-2xl border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
             <ShieldCheck className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white">لوحة تحكم المشرف (Admin)</h1>
-            <p className="text-xs text-slate-400">المهندس عبد الرحمن القاضي • إدارة المناهج والفصول والفيديوهات والمجموعات</p>
+            <h1 className="text-2xl font-black text-white">لوحة تحكم المشرف (Admin Panel)</h1>
+            <p className="text-xs text-slate-400">المهندس عبد الرحمن القاضي • إدارة المناهج والفصول والفيديوهات التعليمية</p>
           </div>
         </div>
-        <div className="text-left text-xs text-slate-400">
-          <span className="block font-bold text-amber-400">{lessons.length} فيديوهات</span>
+        <div className="bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 text-xs text-slate-300">
+          <span className="font-bold text-amber-400 block">{lessons.length} فيديوهات منشورة</span>
           <span>{curriculums.length} مناهج • {chapters.length} فصول</span>
         </div>
       </div>
@@ -193,7 +170,7 @@ export const Admin: React.FC = () => {
             <BookOpen className="w-5 h-5" />
             <h2 className="text-base font-bold text-white">1. إضافة منهج / كورس (Curriculum)</h2>
           </div>
-          <p className="text-xs text-slate-400">أدخل اسم المنهج كـ نص فقط (مثل: تفاضل وتكامل 3 ثانوي)</p>
+          <p className="text-xs text-slate-400">أدخل اسم المنهج كـ نص (مثل: تفاضل وتكامل 3 ثانوي)</p>
 
           {curriculumSuccess && (
             <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300 text-xs flex items-center gap-2">
@@ -216,7 +193,7 @@ export const Admin: React.FC = () => {
               className="px-4 py-2 rounded-xl bg-sky-500 text-white font-bold text-xs hover:bg-sky-400 transition-colors flex items-center gap-1 shrink-0"
             >
               <Plus className="w-4 h-4" />
-              <span>إضافة</span>
+              <span>إضافة منهج</span>
             </button>
           </form>
 
@@ -230,7 +207,7 @@ export const Admin: React.FC = () => {
                   <button
                     onClick={() => CoursesService.deleteCurriculum(curr.id)}
                     className="text-slate-500 hover:text-rose-400"
-                    title="حذف المنهج"
+                    title="حذف"
                   >
                     ×
                   </button>
@@ -280,7 +257,7 @@ export const Admin: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-indigo-500 text-white font-bold text-xs hover:bg-indigo-400 transition-colors flex items-center gap-1 shrink-0"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة</span>
+                <span>إضافة فصل</span>
               </button>
             </div>
           </form>
@@ -307,7 +284,7 @@ export const Admin: React.FC = () => {
           <Video className="w-6 h-6" />
           <div>
             <h2 className="text-lg font-bold text-white">3. إضافة ونشر فيديو جديد (Add Video)</h2>
-            <p className="text-xs text-slate-400">اختر المنهج والفصل من القوائم المنسدلة، ثم اكتب عنوان الدرس وضع رابط يوتيوب وحدد المجموعة</p>
+            <p className="text-xs text-slate-400">اختر المنهج والفصل من القوائم المنسدلة، ثم اكتب عنوان الدرس وضع رابط يوتيوب</p>
           </div>
         </div>
 
@@ -318,7 +295,7 @@ export const Admin: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleAddVideo} className="space-y-5">
+        <form onSubmit={handleAddVideo} className="space-y-4">
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
@@ -395,37 +372,6 @@ export const Admin: React.FC = () => {
 
           </div>
 
-          {/* Group Permissions (مجموعة الطالب) */}
-          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
-            <label className="block text-xs font-bold text-amber-300 flex items-center justify-between">
-              <span>تحديد مجموعة الطلاب المصرح لهم بالمشاهدة:</span>
-              <span className="text-[11px] text-slate-400 font-normal">المجموعة خاصة بالطالب</span>
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {ALL_PERMISSION_GROUPS.map((grp) => {
-                const checked = selectedGroups.includes(grp);
-                return (
-                  <label
-                    key={grp}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      checked
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-200 font-bold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => handleGroupToggle(grp)}
-                      className="rounded text-amber-500 focus:ring-amber-400"
-                    />
-                    <span className="text-xs">{grp}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
           {/* YouTube Preview */}
           {previewId && previewId.length === 11 && (
             <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
@@ -435,7 +381,7 @@ export const Admin: React.FC = () => {
                 className="w-20 h-14 object-cover rounded-lg"
               />
               <span className="text-xs text-emerald-400 font-medium">
-                معرّف يوتيوب صحيح: {previewId}
+                معرّف يوتيوب تم التعرف عليه: {previewId}
               </span>
             </div>
           )}
@@ -467,7 +413,6 @@ export const Admin: React.FC = () => {
                   <th className="py-2.5 px-3">المنهج</th>
                   <th className="py-2.5 px-3">الفصل</th>
                   <th className="py-2.5 px-3">معرّف YouTube</th>
-                  <th className="py-2.5 px-3">المجموعات المسموح لها</th>
                   <th className="py-2.5 px-3 text-center">إجراءات</th>
                 </tr>
               </thead>
@@ -482,21 +427,10 @@ export const Admin: React.FC = () => {
                       <td className="py-3 px-3 text-sky-400">{curr?.title || 'عام'}</td>
                       <td className="py-3 px-3 text-indigo-300">{chap?.title || 'عام'}</td>
                       <td className="py-3 px-3 font-mono text-slate-400 dir-ltr text-left">{lesson.youtubeId}</td>
-                      <td className="py-3 px-3">
-                        <div className="flex flex-wrap gap-1">
-                          {lesson.allowedGroups?.map(g => (
-                            <span key={g} className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
-                              {g}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <a
                             href={`#/lesson/${lesson.id}`}
-                            target="_blank"
-                            rel="noreferrer"
                             className="p-1.5 text-sky-400 hover:bg-sky-500/10 rounded"
                             title="مشاهدة الدرس"
                           >

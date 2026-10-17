@@ -1,43 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CoursesService, extractYouTubeId } from '../lib/coursesService';
+import { 
+  CoursesService, 
+  extractYouTubeId, 
+  getLocalCurriculums, 
+  getLocalChapters, 
+  getLocalLessons 
+} from '../lib/coursesService';
 import { Curriculum, Chapter, Lesson } from '../types';
 import { 
   PlayCircle, 
   Clock, 
-  Users, 
   BookOpen, 
   Folder, 
   ChevronLeft, 
-  ShieldCheck,
-  Search
+  Search,
+  CheckCircle2
 } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, isAdmin, updateCurriculum } = useAuth();
   
-  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [selectedCurriculumId, setSelectedCurriculumId] = useState<string>('');
+  // Initialize synchronously with zero lag
+  const [curriculums, setCurriculums] = useState<Curriculum[]>(getLocalCurriculums());
+  const [chapters, setChapters] = useState<Chapter[]>(getLocalChapters());
+  const [lessons, setLessons] = useState<Lesson[]>(getLocalLessons());
+  
+  const [selectedCurriculumId, setSelectedCurriculumId] = useState<string>(() => {
+    return currentUser?.curriculumId || (curriculums[0]?.id || '');
+  });
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     const unsubCurrs = CoursesService.subscribeCurriculums((c) => {
       setCurriculums(c);
       if (c.length > 0 && !selectedCurriculumId) {
-        setSelectedCurriculumId(c[0].id);
+        setSelectedCurriculumId(currentUser?.curriculumId || c[0].id);
       }
     });
 
-    const unsubChaps = CoursesService.subscribeChapters((ch) => {
-      setChapters(ch);
-    });
-
-    const unsubLess = CoursesService.subscribeLessons((l) => {
-      setLessons(l);
-    });
+    const unsubChaps = CoursesService.subscribeChapters((ch) => setChapters(ch));
+    const unsubLess = CoursesService.subscribeLessons((l) => setLessons(l));
 
     return () => {
       unsubCurrs();
@@ -46,13 +50,12 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  const studentGroup = currentUser?.group || 'مجموعة 1';
-
-  // Check if student group is allowed
-  const isVideoAccessible = (lesson: Lesson): boolean => {
-    if (isAdmin) return true;
-    if (!lesson.allowedGroups || lesson.allowedGroups.length === 0) return true;
-    return lesson.allowedGroups.includes('الكل') || lesson.allowedGroups.includes(studentGroup);
+  // Update curriculum selection if student switches
+  const handleSelectCurriculum = (curr: Curriculum) => {
+    setSelectedCurriculumId(curr.id);
+    if (!isAdmin) {
+      updateCurriculum(curr.id, curr.title);
+    }
   };
 
   // Active curriculum
@@ -64,7 +67,7 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       
-      {/* Student Welcome & Group Bar */}
+      {/* Student Welcome & Selected Curriculum Bar */}
       <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900/90 to-sky-950/40 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <span className="text-xs px-3 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-bold inline-block mb-2">
@@ -74,28 +77,30 @@ export const Dashboard: React.FC = () => {
             مرحباً بك، {currentUser?.fullName || 'عزيزي الطالب'}
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            تابع محاضراتك حسب المنهج والفصل الدراسي. الفيديوهات معروضة حسب مجموعتك.
+            تابع فصول ومحاضرات المنهج المسجل به. اضغط على أي فيديو لبدء المشاهدة.
           </p>
         </div>
 
-        {/* Group Badge */}
-        <div className="flex items-center gap-3 bg-slate-900/90 border border-slate-700 p-4 rounded-2xl shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-            <Users className="w-5 h-5" />
+        {/* Current Enrolled Curriculum Badge */}
+        {activeCurriculum && (
+          <div className="flex items-center gap-3 bg-slate-900/90 border border-slate-700 p-4 rounded-2xl shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
+              <BookOpen className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] text-slate-400 block font-medium">المنهج الحالي</span>
+              <span className="text-sm font-bold text-sky-300">{activeCurriculum.title}</span>
+            </div>
           </div>
-          <div>
-            <span className="text-[11px] text-slate-400 block font-medium">مجموعتك الدراسية</span>
-            <span className="text-sm font-bold text-indigo-300">{studentGroup}</span>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Curriculum Tabs Switcher */}
+      {/* Curriculum Selector Tabs */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-sky-400" />
-            <span>اختر المنهج الدراسي:</span>
+            <span>اختر المنهج الدراسي لتصفح فصوله:</span>
           </h2>
 
           {/* Quick Search */}
@@ -103,7 +108,7 @@ export const Dashboard: React.FC = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="ابحث عن فيديو أو درس..."
+            placeholder="ابحث عن درس أو فيديو..."
             className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
           />
         </div>
@@ -114,7 +119,7 @@ export const Dashboard: React.FC = () => {
             return (
               <button
                 key={curr.id}
-                onClick={() => setSelectedCurriculumId(curr.id)}
+                onClick={() => handleSelectCurriculum(curr)}
                 className={`px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${
                   isSelected
                     ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/25 scale-[1.02]'
@@ -123,6 +128,7 @@ export const Dashboard: React.FC = () => {
               >
                 <BookOpen className="w-4 h-4" />
                 <span>{curr.title}</span>
+                {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-sky-200" />}
               </button>
             );
           })}
@@ -133,10 +139,8 @@ export const Dashboard: React.FC = () => {
       <div className="space-y-8">
         {activeChapters.length > 0 ? (
           activeChapters.map((chapter) => {
-            // Find lessons of this chapter matching student group
             const chapterLessons = lessons.filter(l => {
               if (l.chapterId !== chapter.id) return false;
-              if (!isVideoAccessible(l)) return false;
               if (searchTerm.trim()) {
                 return l.title.toLowerCase().includes(searchTerm.toLowerCase());
               }
@@ -156,7 +160,7 @@ export const Dashboard: React.FC = () => {
                   </div>
 
                   <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
-                    {chapterLessons.length} فيديوهات متاحة
+                    {chapterLessons.length} فيديوهات
                   </span>
                 </div>
 
@@ -188,7 +192,6 @@ export const Dashboard: React.FC = () => {
                               </div>
                             </div>
                             
-                            {/* Duration Badge */}
                             {lesson.duration && (
                               <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-slate-950/80 text-[10px] text-slate-300 flex items-center gap-1 font-mono">
                                 <Clock className="w-3 h-3 text-sky-400" />
@@ -204,7 +207,7 @@ export const Dashboard: React.FC = () => {
                             </h4>
 
                             <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800/80">
-                              <span className="text-slate-500">متاح لـ: {studentGroup}</span>
+                              <span className="text-slate-500">{activeCurriculum?.title}</span>
                               <span className="text-sky-400 font-bold flex items-center gap-0.5">
                                 <span>مشاهدة</span>
                                 <ChevronLeft className="w-3 h-3" />
@@ -217,7 +220,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                 ) : (
                   <p className="text-xs text-slate-500 py-4 text-center">
-                    لا توجد فيديوهات مخصصة لـ {studentGroup} في هذا الفصل حالياً.
+                    لا توجد فيديوهات مضافة في هذا الفصل حتى الآن.
                   </p>
                 )}
 

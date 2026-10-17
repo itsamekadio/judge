@@ -1,38 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CoursesService } from '../lib/coursesService';
+import { 
+  CoursesService, 
+  getLocalCurriculums, 
+  getLocalChapters, 
+  getLocalLessons 
+} from '../lib/coursesService';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { Curriculum, Chapter, Lesson } from '../types';
 import { 
   ArrowRight, 
   ChevronLeft, 
   ChevronRight, 
-  Lock, 
   PlayCircle, 
   Clock, 
   CheckCircle2, 
-  BookOpen,
   Folder
 } from 'lucide-react';
 
 export const LessonView: React.FC = () => {
   const { lessonId } = useParams<{ lessonId: string }>();
-  const { currentUser, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Instant synchronous initialization
+  const [curriculums, setCurriculums] = useState<Curriculum[]>(getLocalCurriculums());
+  const [chapters, setChapters] = useState<Chapter[]>(getLocalChapters());
+  const [lessons, setLessons] = useState<Lesson[]>(getLocalLessons());
 
   useEffect(() => {
     const unsubCurrs = CoursesService.subscribeCurriculums((c) => setCurriculums(c));
     const unsubChaps = CoursesService.subscribeChapters((ch) => setChapters(ch));
-    const unsubLess = CoursesService.subscribeLessons((l) => {
-      setLessons(l);
-      setLoading(false);
-    });
+    const unsubLess = CoursesService.subscribeLessons((l) => setLessons(l));
 
     return () => {
       unsubCurrs();
@@ -40,8 +39,6 @@ export const LessonView: React.FC = () => {
       unsubLess();
     };
   }, []);
-
-  const studentGroup = currentUser?.group || 'مجموعة 1';
 
   // Active lesson
   const currentLesson = lessons.find((l) => l.id === lessonId);
@@ -53,28 +50,10 @@ export const LessonView: React.FC = () => {
     .filter((l) => l.chapterId === currentLesson?.chapterId)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-  // Determine access permission
-  const hasAccess = Boolean(
-    isAdmin || 
-    !currentLesson || 
-    !currentLesson.allowedGroups || 
-    currentLesson.allowedGroups.length === 0 ||
-    currentLesson.allowedGroups.includes('الكل') ||
-    currentLesson.allowedGroups.includes(studentGroup)
-  );
-
   // Next / Prev lessons in current chapter
   const currentIndex = chapterLessons.findIndex((l) => l.id === lessonId);
   const prevLesson = currentIndex > 0 ? chapterLessons[currentIndex - 1] : null;
   const nextLesson = currentIndex >= 0 && currentIndex < chapterLessons.length - 1 ? chapterLessons[currentIndex + 1] : null;
-
-  if (loading) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-16 text-center text-slate-400">
-        <p className="animate-pulse">جاري تحميل المحاضرة...</p>
-      </div>
-    );
-  }
 
   if (!currentLesson) {
     return (
@@ -115,26 +94,16 @@ export const LessonView: React.FC = () => {
         </Link>
       </div>
 
-      {/* Grid: Video on Left/Center, Chapter Playlist on Right (RTL) */}
+      {/* Grid: Video on Left, Chapter Playlist on Right (RTL) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Video Player Column */}
         <div className="lg:col-span-2 space-y-4">
-          {hasAccess ? (
-            <VideoPlayer
-              youtubeId={currentLesson.youtubeId}
-              title={currentLesson.title}
-              autoPlay={false}
-            />
-          ) : (
-            <div className="w-full aspect-video rounded-2xl bg-slate-950 border border-rose-500/30 flex flex-col items-center justify-center p-6 text-center space-y-2">
-              <Lock className="w-10 h-10 text-rose-400" />
-              <h3 className="text-lg font-bold text-white">هذا الفيديو غير متاح لمجموعتك ({studentGroup})</h3>
-              <p className="text-xs text-slate-400 max-w-sm">
-                المجموعات المصرح لها: {currentLesson.allowedGroups?.join('، ')}. يرجى مراجعة المهندس عبد الرحمن القاضي لتعديل تصريح مجموعتك.
-              </p>
-            </div>
-          )}
+          <VideoPlayer
+            youtubeId={currentLesson.youtubeId}
+            title={currentLesson.title}
+            autoPlay={false}
+          />
 
           {/* Video Title Details */}
           <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3">
@@ -198,29 +167,24 @@ export const LessonView: React.FC = () => {
           <div className="space-y-1.5 max-h-[500px] overflow-y-auto">
             {chapterLessons.map((l, idx) => {
               const isActive = l.id === lessonId;
-              const canWatch = isAdmin || !l.allowedGroups?.length || l.allowedGroups.includes('الكل') || l.allowedGroups.includes(studentGroup);
 
               return (
                 <Link
                   key={l.id}
-                  to={canWatch ? `/lesson/${l.id}` : '#'}
+                  to={`/lesson/${l.id}`}
                   className={`block p-2.5 rounded-xl border text-xs transition-all ${
                     isActive
                       ? 'bg-sky-500/15 border-sky-500 text-sky-300 font-bold'
-                      : canWatch
-                      ? 'bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-slate-800'
-                      : 'bg-slate-950/40 border-slate-900 text-slate-600 opacity-60 cursor-not-allowed'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
                     {isActive ? (
                       <PlayCircle className="w-4 h-4 text-sky-400 shrink-0 fill-current" />
-                    ) : canWatch ? (
+                    ) : (
                       <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-400 text-[10px] flex items-center justify-center shrink-0">
                         {idx + 1}
                       </span>
-                    ) : (
-                      <Lock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
                     )}
                     <span className="truncate flex-1">{l.title}</span>
                   </div>
