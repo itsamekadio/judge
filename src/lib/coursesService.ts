@@ -6,11 +6,11 @@ import {
   deleteDoc, 
   query, 
   orderBy, 
-  serverTimestamp,
+  serverTimestamp, 
   onSnapshot 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Curriculum, Chapter, Lesson } from '../types';
+import { Curriculum, Chapter, Topic, Lesson } from '../types';
 
 // Helper to extract clean 11-char YouTube ID
 export function extractYouTubeId(input: string): string {
@@ -33,7 +33,6 @@ export const CoursesService = {
     try {
       const q = query(collection(db, 'curriculums'), orderBy('order', 'asc'));
       return onSnapshot(q, (snapshot) => {
-        // Always call callback — even when empty (handles deletions)
         const list: Curriculum[] = snapshot.docs.map(d => ({
           id: d.id,
           ...(d.data() as Omit<Curriculum, 'id'>)
@@ -119,7 +118,55 @@ export const CoursesService = {
     await deleteDoc(doc(db, 'chapters', id));
   },
 
-  // ── Lessons ───────────────────────────────────────────────────────────────
+  // ── Topics ───────────────────────────────────────────────────────────────
+  subscribeTopics: (callback: (topics: Topic[]) => void) => {
+    try {
+      const q = query(collection(db, 'topics'), orderBy('order', 'asc'));
+      return onSnapshot(q, (snapshot) => {
+        const list: Topic[] = snapshot.docs.map(d => ({
+          id: d.id,
+          ...(d.data() as Omit<Topic, 'id'>)
+        }));
+        callback(list);
+      }, (err) => {
+        console.warn('Firestore topics error:', err.message);
+        callback([]);
+      });
+    } catch (e) {
+      console.warn(e);
+      callback([]);
+      return () => {};
+    }
+  },
+
+  addTopic: async (curriculumId: string, chapterId: string, title: string, order: number = 1): Promise<Topic> => {
+    const id = `topic-${Date.now()}`;
+    const newTopic: Topic = {
+      id,
+      curriculumId,
+      chapterId,
+      title: title.trim(),
+      order,
+      createdAt: new Date().toISOString()
+    };
+
+    await setDoc(doc(db, 'topics', id), {
+      id,
+      curriculumId,
+      chapterId,
+      title: title.trim(),
+      order,
+      createdAt: serverTimestamp()
+    });
+
+    return newTopic;
+  },
+
+  deleteTopic: async (id: string): Promise<void> => {
+    await deleteDoc(doc(db, 'topics', id));
+  },
+
+  // ── Lessons / Videos ─────────────────────────────────────────────────────
   subscribeLessons: (callback: (lessons: Lesson[]) => void) => {
     try {
       const q = query(collection(db, 'lessons'), orderBy('order', 'asc'));
@@ -142,10 +189,10 @@ export const CoursesService = {
 
   addLesson: async (data: Omit<Lesson, 'id'>): Promise<Lesson> => {
     const cleanYt = extractYouTubeId(data.youtubeId);
-
     const docRef = await addDoc(collection(db, 'lessons'), {
       curriculumId: data.curriculumId,
       chapterId: data.chapterId,
+      topicId: data.topicId || '',
       title: data.title.trim(),
       youtubeId: cleanYt,
       order: Number(data.order) || 1,

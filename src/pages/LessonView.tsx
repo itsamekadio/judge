@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { CoursesService } from '../lib/coursesService';
 import { VideoPlayer } from '../components/VideoPlayer';
-import { Curriculum, Chapter, Lesson } from '../types';
+import { Curriculum, Chapter, Topic, Lesson } from '../types';
 import { 
   ArrowRight, 
   ChevronLeft, 
@@ -11,7 +11,8 @@ import {
   PlayCircle, 
   Clock, 
   CheckCircle2, 
-  Folder
+  Folder,
+  Layers
 } from 'lucide-react';
 
 export const LessonView: React.FC = () => {
@@ -21,16 +22,19 @@ export const LessonView: React.FC = () => {
   // State filled by Firestore real-time subscriptions
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
 
   useEffect(() => {
     const unsubCurrs = CoursesService.subscribeCurriculums((c) => setCurriculums(c));
     const unsubChaps = CoursesService.subscribeChapters((ch) => setChapters(ch));
+    const unsubTops = CoursesService.subscribeTopics((t) => setTopics(t));
     const unsubLess = CoursesService.subscribeLessons((l) => setLessons(l));
 
     return () => {
       unsubCurrs();
       unsubChaps();
+      unsubTops();
       unsubLess();
     };
   }, []);
@@ -39,8 +43,9 @@ export const LessonView: React.FC = () => {
   const currentLesson = lessons.find((l) => l.id === lessonId);
   const activeChapter = chapters.find((ch) => ch.id === currentLesson?.chapterId);
   const activeCurriculum = curriculums.find((c) => c.id === currentLesson?.curriculumId);
+  const activeTopic = topics.find((t) => t.id === currentLesson?.topicId);
 
-  // Other lessons in active chapter
+  // Other lessons in active chapter (or active topic if present)
   const chapterLessons = lessons
     .filter((l) => l.chapterId === currentLesson?.chapterId)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -70,12 +75,18 @@ export const LessonView: React.FC = () => {
       
       {/* Breadcrumb */}
       <div className="flex items-center justify-between text-xs text-slate-400">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link to="/dashboard" className="hover:text-sky-400">الرئيسية</Link>
           <ChevronLeft className="w-3 h-3 text-slate-600" />
           <span className="text-slate-300 font-medium">{activeCurriculum?.title || 'المنهج'}</span>
           <ChevronLeft className="w-3 h-3 text-slate-600" />
           <span className="text-indigo-300 font-medium">{activeChapter?.title || 'الفصل'}</span>
+          {activeTopic && (
+            <>
+              <ChevronLeft className="w-3 h-3 text-slate-600" />
+              <span className="text-emerald-300 font-medium">{activeTopic.title}</span>
+            </>
+          )}
           <ChevronLeft className="w-3 h-3 text-slate-600" />
           <span className="text-sky-400 font-bold truncate max-w-[180px] sm:max-w-none">{currentLesson.title}</span>
         </div>
@@ -104,7 +115,7 @@ export const LessonView: React.FC = () => {
           <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
               <h1 className="text-xl font-bold text-white">{currentLesson.title}</h1>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {currentLesson.duration && (
                   <span className="text-xs text-slate-400 flex items-center gap-1 font-mono">
                     <Clock className="w-3.5 h-3.5" />
@@ -114,6 +125,12 @@ export const LessonView: React.FC = () => {
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-bold">
                   {activeChapter?.title}
                 </span>
+                {activeTopic && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-bold flex items-center gap-1">
+                    <Layers className="w-3 h-3" />
+                    <span>{activeTopic.title}</span>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -162,6 +179,7 @@ export const LessonView: React.FC = () => {
           <div className="space-y-1.5 max-h-[500px] overflow-y-auto">
             {chapterLessons.map((l, idx) => {
               const isActive = l.id === lessonId;
+              const lessonTopic = topics.find(t => t.id === l.topicId);
 
               return (
                 <Link
@@ -181,7 +199,14 @@ export const LessonView: React.FC = () => {
                         {idx + 1}
                       </span>
                     )}
-                    <span className="truncate flex-1">{l.title}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">{l.title}</div>
+                      {lessonTopic && (
+                        <div className="text-[10px] text-emerald-400/80 truncate">
+                          {lessonTopic.title}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Link>
               );

@@ -4,13 +4,14 @@ import {
   CoursesService, 
   extractYouTubeId
 } from '../lib/coursesService';
-import { Curriculum, Chapter, Lesson } from '../types';
+import { Curriculum, Chapter, Topic, Lesson } from '../types';
 import { 
   ShieldCheck, 
   Plus, 
   Video, 
   BookOpen, 
   FolderPlus, 
+  Layers,
   Trash2, 
   CheckCircle, 
   Eye
@@ -19,9 +20,10 @@ import {
 export const Admin: React.FC = () => {
   const { currentUser, isAdmin } = useAuth();
 
-  // Initialize from Firestore via subscriptions (no stale local cache)
+  // Firestore real-time subscriptions
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
 
   // Global error state for Firestore failures
@@ -36,9 +38,16 @@ export const Admin: React.FC = () => {
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [chapterSuccess, setChapterSuccess] = useState('');
 
-  // 3. Add Video state
+  // 3. Add Topic state
+  const [topicCurriculumId, setTopicCurriculumId] = useState('');
+  const [topicChapterId, setTopicChapterId] = useState('');
+  const [newTopicTitle, setNewTopicTitle] = useState('');
+  const [topicSuccess, setTopicSuccess] = useState('');
+
+  // 4. Add Video state
   const [selectedCurriculumId, setSelectedCurriculumId] = useState('');
   const [selectedChapterId, setSelectedChapterId] = useState('');
+  const [selectedTopicId, setSelectedTopicId] = useState('');
   const [videoTitle, setVideoTitle] = useState('');
   const [youtubeInput, setYoutubeInput] = useState('');
   const [videoDuration, setVideoDuration] = useState('30 دقيقة');
@@ -49,12 +58,17 @@ export const Admin: React.FC = () => {
       setCurriculums(c);
       if (c.length > 0) {
         setChapterCurriculumId(prev => prev || c[0].id);
+        setTopicCurriculumId(prev => prev || c[0].id);
         setSelectedCurriculumId(prev => prev || c[0].id);
       }
     });
 
     const unsubChaps = CoursesService.subscribeChapters((ch) => {
       setChapters(ch);
+    });
+
+    const unsubTops = CoursesService.subscribeTopics((t) => {
+      setTopics(t);
     });
 
     const unsubLess = CoursesService.subscribeLessons((l) => {
@@ -64,21 +78,48 @@ export const Admin: React.FC = () => {
     return () => {
       unsubCurrs();
       unsubChaps();
+      unsubTops();
       unsubLess();
     };
   }, []);
 
-  // Update selectedChapterId when selectedCurriculumId or chapters change
+  // Update topicChapterId when topicCurriculumId changes
+  useEffect(() => {
+    if (topicCurriculumId) {
+      const availChaps = chapters.filter(ch => ch.curriculumId === topicCurriculumId);
+      if (availChaps.length > 0) {
+        setTopicChapterId(prev => (availChaps.some(c => c.id === prev) ? prev : availChaps[0].id));
+      } else {
+        setTopicChapterId('');
+      }
+    }
+  }, [topicCurriculumId, chapters]);
+
+  // Update selectedChapterId when selectedCurriculumId changes for Video Form
   useEffect(() => {
     if (selectedCurriculumId) {
-      const available = chapters.filter(ch => ch.curriculumId === selectedCurriculumId);
-      if (available.length > 0) {
-        setSelectedChapterId(available[0].id);
+      const availChaps = chapters.filter(ch => ch.curriculumId === selectedCurriculumId);
+      if (availChaps.length > 0) {
+        setSelectedChapterId(prev => (availChaps.some(c => c.id === prev) ? prev : availChaps[0].id));
       } else {
         setSelectedChapterId('');
       }
     }
   }, [selectedCurriculumId, chapters]);
+
+  // Update selectedTopicId when selectedChapterId changes for Video Form
+  useEffect(() => {
+    if (selectedChapterId) {
+      const availTopics = topics.filter(t => t.chapterId === selectedChapterId);
+      if (availTopics.length > 0) {
+        setSelectedTopicId(prev => (availTopics.some(t => t.id === prev) ? prev : availTopics[0].id));
+      } else {
+        setSelectedTopicId('');
+      }
+    } else {
+      setSelectedTopicId('');
+    }
+  }, [selectedChapterId, topics]);
 
   // 1. Add Curriculum
   const handleAddCurriculum = async (e: React.FormEvent) => {
@@ -92,7 +133,7 @@ export const Admin: React.FC = () => {
       setTimeout(() => setCurriculumSuccess(''), 3000);
     } catch (err: any) {
       console.error(err);
-      setGlobalError(`خطأ في إضافة المنهج: ${err?.code || err?.message || 'تحقق من إعدادات Firebase'}`);
+      setGlobalError(`خطأ في إضافة المنهج: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
     }
   };
 
@@ -112,11 +153,31 @@ export const Admin: React.FC = () => {
       setTimeout(() => setChapterSuccess(''), 3000);
     } catch (err: any) {
       console.error(err);
-      setGlobalError(`خطأ في إضافة الفصل: ${err?.code || err?.message || 'تحقق من إعدادات Firebase'}`);
+      setGlobalError(`خطأ في إضافة الفصل: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
     }
   };
 
-  // 3. Add Video
+  // 3. Add Topic
+  const handleAddTopic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topicCurriculumId || !topicChapterId || !newTopicTitle.trim()) {
+      alert('يرجى اختيار المنهج والفصل ثم كتابة اسم الموضوع');
+      return;
+    }
+    setGlobalError(null);
+    try {
+      const chapTopics = topics.filter(t => t.chapterId === topicChapterId);
+      await CoursesService.addTopic(topicCurriculumId, topicChapterId, newTopicTitle.trim(), chapTopics.length + 1);
+      setTopicSuccess('تمت إضافة الموضوع بنجاح!');
+      setNewTopicTitle('');
+      setTimeout(() => setTopicSuccess(''), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setGlobalError(`خطأ في إضافة الموضوع: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
+    }
+  };
+
+  // 4. Add Video
   const handleAddVideo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCurriculumId || !selectedChapterId) {
@@ -136,27 +197,34 @@ export const Admin: React.FC = () => {
 
     setGlobalError(null);
     try {
-      const chapterLessons = lessons.filter(l => l.chapterId === selectedChapterId);
+      const filteredLessons = lessons.filter(l => 
+        selectedTopicId ? l.topicId === selectedTopicId : l.chapterId === selectedChapterId
+      );
+
       await CoursesService.addLesson({
         curriculumId: selectedCurriculumId,
         chapterId: selectedChapterId,
+        topicId: selectedTopicId || '',
         title: videoTitle.trim(),
         youtubeId: cleanYt,
         duration: videoDuration || '30 دقيقة',
-        order: chapterLessons.length + 1
+        order: filteredLessons.length + 1
       });
-      setVideoSuccess('تم نشر الفيديو وربطه بالمنهج والفصل فوراً!');
+
+      setVideoSuccess('تم نشر الفيديو وربطه بنجاح!');
       setVideoTitle('');
       setYoutubeInput('');
       setTimeout(() => setVideoSuccess(''), 4000);
     } catch (err: any) {
       console.error(err);
-      setGlobalError(`خطأ في إضافة الفيديو: ${err?.code || err?.message || 'تحقق من إعدادات Firebase'}`);
+      setGlobalError(`خطأ في إضافة الفيديو: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
     }
   };
 
   const previewId = extractYouTubeId(youtubeInput);
   const filteredChaptersForVideo = chapters.filter(ch => ch.curriculumId === selectedCurriculumId);
+  const filteredTopicsForVideo = topics.filter(t => t.chapterId === selectedChapterId);
+  const topicFilterChapters = chapters.filter(ch => ch.curriculumId === topicCurriculumId);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -169,16 +237,16 @@ export const Admin: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black text-white">لوحة تحكم المشرف (Admin Panel)</h1>
-            <p className="text-xs text-slate-400">المهندس عبد الرحمن القاضي • إدارة المناهج والفصول والفيديوهات التعليمية</p>
+            <p className="text-xs text-slate-400">المهندس عبد الرحمن القاضي • الهيكل: منهج → فصل → موضوع → فيديو</p>
           </div>
         </div>
         <div className="bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 text-xs text-slate-300">
           <span className="font-bold text-amber-400 block">{lessons.length} فيديوهات منشورة</span>
-          <span>{curriculums.length} مناهج • {chapters.length} فصول</span>
+          <span>{curriculums.length} مناهج • {chapters.length} فصول • {topics.length} موضوعات</span>
         </div>
       </div>
 
-      {/* Global Error Banner — shown when Firestore write fails (e.g. permissions) */}
+      {/* Global Error Banner */}
       {globalError && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm space-y-2">
           <div className="flex items-center gap-2 font-bold">
@@ -186,40 +254,20 @@ export const Admin: React.FC = () => {
             <span>خطأ في قاعدة البيانات (Firestore Error)</span>
           </div>
           <p className="text-xs font-mono break-all">{globalError}</p>
-          <p className="text-xs text-rose-200">
-            الحل: اذهب إلى{' '}
-            <a
-              href="https://console.firebase.google.com/project/judge-platform/firestore/rules"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline text-amber-300 font-bold"
-            >
-              Firebase Console → Firestore → Rules
-            </a>
-            {' '}وانسخ القواعد المكتوبة أدناه واضغط Publish
-          </p>
-          <pre className="text-[11px] bg-slate-950 p-3 rounded-xl text-emerald-300 overflow-x-auto">{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}`}</pre>
           <button onClick={() => setGlobalError(null)} className="text-xs text-slate-400 underline">إخفاء</button>
         </div>
       )}
 
-      {/* Row: Add Curriculum (Text) + Add Chapter (Text) */}
+      {/* Row 1: Add Curriculum + Add Chapter */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* 1. Add Curriculum by text */}
+        {/* 1. Add Curriculum */}
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <div className="flex items-center gap-2 text-sky-400">
             <BookOpen className="w-5 h-5" />
-            <h2 className="text-base font-bold text-white">1. إضافة منهج / كورس (Curriculum)</h2>
+            <h2 className="text-base font-bold text-white">1. إضافة منهج (Curriculum)</h2>
           </div>
-          <p className="text-xs text-slate-400">أدخل اسم المنهج كـ نص (مثل: تفاضل وتكامل 3 ثانوي)</p>
+          <p className="text-xs text-slate-400">مثال: تفاضل وتكامل 3 ثانوي، جبر وفراغية، إلخ</p>
 
           {curriculumSuccess && (
             <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300 text-xs flex items-center gap-2">
@@ -254,8 +302,12 @@ service cloud.firestore {
                 <div key={curr.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
                   <span>{curr.title}</span>
                   <button
-                    onClick={() => CoursesService.deleteCurriculum(curr.id)}
-                    className="text-slate-500 hover:text-rose-400"
+                    onClick={() => {
+                      if (confirm(`حذف منهج: ${curr.title}؟`)) {
+                        CoursesService.deleteCurriculum(curr.id);
+                      }
+                    }}
+                    className="text-slate-500 hover:text-rose-400 font-bold"
                     title="حذف"
                   >
                     ×
@@ -266,13 +318,13 @@ service cloud.firestore {
           </div>
         </div>
 
-        {/* 2. Add Chapter by text */}
+        {/* 2. Add Chapter */}
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <div className="flex items-center gap-2 text-indigo-400">
             <FolderPlus className="w-5 h-5" />
             <h2 className="text-base font-bold text-white">2. إضافة فصل / باب (Chapter)</h2>
           </div>
-          <p className="text-xs text-slate-400">اختر المنهج واكتب اسم الفصل نصاً (مثل: الفصل الأول: النهايات)</p>
+          <p className="text-xs text-slate-400">اختر المنهج واكتب اسم الفصل (مثال: الباب الأول: الاشتقاق)</p>
 
           {chapterSuccess && (
             <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300 text-xs flex items-center gap-2">
@@ -313,27 +365,139 @@ service cloud.firestore {
 
           {/* Chapters count */}
           <div className="pt-2 border-t border-slate-800/80">
-            <span className="text-[11px] text-slate-500 block mb-1">الفصول المتاحة حالياً ({chapters.length}):</span>
-            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-              {chapters.map((ch) => (
-                <span key={ch.id} className="text-[11px] px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 flex items-center gap-1">
-                  <span>{ch.title}</span>
-                  <button onClick={() => CoursesService.deleteChapter(ch.id)} className="text-rose-400/80 hover:text-rose-300">×</button>
-                </span>
-              ))}
+            <span className="text-[11px] text-slate-500 block mb-1">الفصول المتاحة ({chapters.length}):</span>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              {chapters.map((ch) => {
+                const c = curriculums.find(curr => curr.id === ch.curriculumId);
+                return (
+                  <span key={ch.id} className="text-[11px] px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 flex items-center gap-1.5">
+                    <span className="text-slate-500 text-[10px]">[{c?.title || 'عام'}]</span>
+                    <span>{ch.title}</span>
+                    <button
+                      onClick={() => {
+                        if (confirm(`حذف فصل: ${ch.title}؟`)) {
+                          CoursesService.deleteChapter(ch.id);
+                        }
+                      }}
+                      className="text-rose-400 hover:text-rose-300 font-bold"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           </div>
         </div>
 
       </div>
 
-      {/* 3. Add Video with Dropdowns */}
+      {/* Row 2: 3. Add Topic (الموضوع) */}
+      <div className="glass-panel p-6 rounded-2xl border border-emerald-500/30 space-y-4">
+        <div className="flex items-center gap-2 text-emerald-400">
+          <Layers className="w-5 h-5" />
+          <h2 className="text-base font-bold text-white">3. إضافة موضوع تحت الفصل (Topic)</h2>
+        </div>
+        <p className="text-xs text-slate-400">
+          أضف موضوعاً مخصصاً داخل الفصل (مثال: الكسور، الاشتقاق الضمني، النهايات المثلثية...)
+        </p>
+
+        {topicSuccess && (
+          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-300 text-xs flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            <span>{topicSuccess}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleAddTopic} className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">المنهج:</label>
+              <select
+                value={topicCurriculumId}
+                onChange={(e) => setTopicCurriculumId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+              >
+                {curriculums.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">الفصل التابع له:</label>
+              <select
+                value={topicChapterId}
+                onChange={(e) => setTopicChapterId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+              >
+                {topicFilterChapters.length > 0 ? (
+                  topicFilterChapters.map((ch) => (
+                    <option key={ch.id} value={ch.id}>{ch.title}</option>
+                  ))
+                ) : (
+                  <option value="">لا توجد فصول لهذا المنهج بعد</option>
+                )}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              required
+              value={newTopicTitle}
+              onChange={(e) => setNewTopicTitle(e.target.value)}
+              placeholder="اسم الموضوع الجديد (مثال: الكسور الجزئية)..."
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              type="submit"
+              disabled={!topicChapterId}
+              className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-400 transition-colors flex items-center gap-1 shrink-0 disabled:opacity-50"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة موضوع</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Existing Topics list */}
+        <div className="pt-2 border-t border-slate-800/80">
+          <span className="text-[11px] text-slate-500 block mb-1">الموضوعات المتاحة ({topics.length}):</span>
+          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+            {topics.map((t) => {
+              const ch = chapters.find(c => c.id === t.chapterId);
+              return (
+                <span key={t.id} className="text-[11px] px-2 py-0.5 rounded bg-slate-900 text-emerald-300 border border-emerald-500/20 flex items-center gap-1.5">
+                  <span className="text-slate-500 text-[10px]">[{ch?.title || 'فصل'}]</span>
+                  <span>{t.title}</span>
+                  <button
+                    onClick={() => {
+                      if (confirm(`حذف موضوع: ${t.title}؟`)) {
+                        CoursesService.deleteTopic(t.id);
+                      }
+                    }}
+                    className="text-rose-400 hover:text-rose-300 font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Add Video with Dropdowns (Curriculum -> Chapter -> Topic) */}
       <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-amber-500/40 space-y-6">
         <div className="flex items-center gap-2 text-amber-400">
           <Video className="w-6 h-6" />
           <div>
-            <h2 className="text-lg font-bold text-white">3. إضافة ونشر فيديو جديد (Add Video)</h2>
-            <p className="text-xs text-slate-400">اختر المنهج والفصل من القوائم المنسدلة، ثم اكتب عنوان الدرس وضع رابط يوتيوب</p>
+            <h2 className="text-lg font-bold text-white">4. إضافة ونشر فيديو جديد (Add Video)</h2>
+            <p className="text-xs text-slate-400">
+              اختر المنهج ← الفصل ← الموضوع، ثم اكتب عنوان الفيديو وضع رابط يوتيوب
+            </p>
           </div>
         </div>
 
@@ -346,18 +510,18 @@ service cloud.firestore {
 
         <form onSubmit={handleAddVideo} className="space-y-4">
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             
             {/* Dropdown 1: Curriculum */}
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                اختر المنهج (Curriculum) <span className="text-rose-400">*</span>
+                1. المنهج (Curriculum) <span className="text-rose-400">*</span>
               </label>
               <select
                 value={selectedCurriculumId}
                 onChange={(e) => setSelectedCurriculumId(e.target.value)}
                 required
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
               >
                 {curriculums.map((c) => (
                   <option key={c.id} value={c.id}>{c.title}</option>
@@ -368,14 +532,14 @@ service cloud.firestore {
             {/* Dropdown 2: Chapter */}
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                اختر الفصل (Chapter) <span className="text-rose-400">*</span>
+                2. الفصل (Chapter) <span className="text-rose-400">*</span>
               </label>
               {filteredChaptersForVideo.length > 0 ? (
                 <select
                   value={selectedChapterId}
                   onChange={(e) => setSelectedChapterId(e.target.value)}
                   required
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   {filteredChaptersForVideo.map((ch) => (
                     <option key={ch.id} value={ch.id}>{ch.title}</option>
@@ -383,22 +547,43 @@ service cloud.firestore {
                 </select>
               ) : (
                 <div className="p-2 text-xs text-amber-300 bg-amber-500/10 rounded-xl border border-amber-500/30">
-                  لا توجد فصول بعد لهذا المنهج. أضف فصلاً في الأعلى أولاً.
+                  لا توجد فصول لهذا المنهج
                 </div>
               )}
             </div>
 
+            {/* Dropdown 3: Topic */}
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                3. الموضوع (Topic) <span className="text-slate-500 text-[11px]">(اختياري / موصى به)</span>
+              </label>
+              <select
+                value={selectedTopicId}
+                onChange={(e) => setSelectedTopicId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+              >
+                <option value="">-- عام (بدون موضوع فرعي) --</option>
+                {filteredTopicsForVideo.map((t) => (
+                  <option key={t.id} value={t.id}>{t.title}</option>
+                ))}
+              </select>
+            </div>
+
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
             {/* Lesson Title */}
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                عنوان الدرس / المحاضرة <span className="text-rose-400">*</span>
+                عنوان الدرس / الفيديو <span className="text-rose-400">*</span>
               </label>
               <input
                 type="text"
                 required
                 value={videoTitle}
                 onChange={(e) => setVideoTitle(e.target.value)}
-                placeholder="مثال: الدرس 1: مفهوم النهاية بيانياً"
+                placeholder="مثال: شرح الجمع والطرح في الكسور..."
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
               />
             </div>
@@ -441,12 +626,12 @@ service cloud.firestore {
             className="w-full py-3.5 px-6 rounded-xl font-black text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Video className="w-5 h-5" />
-            <span>نشر الفيديو في المنهج والفصل فوراً</span>
+            <span>نشر الفيديو في المنهج والفصل والموضوع فوراً</span>
           </button>
         </form>
       </div>
 
-      {/* 4. Table of Published Videos */}
+      {/* 5. Table of Published Videos */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <h3 className="font-bold text-white text-base">قائمة الفيديوهات المنشورة ({lessons.length})</h3>
@@ -461,6 +646,7 @@ service cloud.firestore {
                   <th className="py-2.5 px-3">الدرس</th>
                   <th className="py-2.5 px-3">المنهج</th>
                   <th className="py-2.5 px-3">الفصل</th>
+                  <th className="py-2.5 px-3">الموضوع (Topic)</th>
                   <th className="py-2.5 px-3">معرّف YouTube</th>
                   <th className="py-2.5 px-3 text-center">إجراءات</th>
                 </tr>
@@ -469,12 +655,16 @@ service cloud.firestore {
                 {lessons.map((lesson) => {
                   const curr = curriculums.find(c => c.id === lesson.curriculumId);
                   const chap = chapters.find(ch => ch.id === lesson.chapterId);
+                  const top = topics.find(t => t.id === lesson.topicId);
 
                   return (
                     <tr key={lesson.id} className="hover:bg-slate-900/40">
                       <td className="py-3 px-3 font-bold text-slate-200">{lesson.title}</td>
                       <td className="py-3 px-3 text-sky-400">{curr?.title || 'عام'}</td>
                       <td className="py-3 px-3 text-indigo-300">{chap?.title || 'عام'}</td>
+                      <td className="py-3 px-3 text-emerald-400 font-medium">
+                        {top ? top.title : <span className="text-slate-500">عام</span>}
+                      </td>
                       <td className="py-3 px-3 font-mono text-slate-400 dir-ltr text-left">{lesson.youtubeId}</td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-2">

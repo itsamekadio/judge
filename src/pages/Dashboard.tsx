@@ -5,12 +5,13 @@ import {
   CoursesService, 
   extractYouTubeId
 } from '../lib/coursesService';
-import { Curriculum, Chapter, Lesson } from '../types';
+import { Curriculum, Chapter, Topic, Lesson } from '../types';
 import { 
   PlayCircle, 
   Clock, 
   BookOpen, 
   Folder, 
+  Layers,
   ChevronLeft, 
   Search,
   CheckCircle2
@@ -22,6 +23,7 @@ export const Dashboard: React.FC = () => {
   // State filled by Firestore real-time subscriptions
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<string>('');
@@ -36,11 +38,13 @@ export const Dashboard: React.FC = () => {
     });
 
     const unsubChaps = CoursesService.subscribeChapters((ch) => setChapters(ch));
+    const unsubTops = CoursesService.subscribeTopics((t) => setTopics(t));
     const unsubLess = CoursesService.subscribeLessons((l) => setLessons(l));
 
     return () => {
       unsubCurrs();
       unsubChaps();
+      unsubTops();
       unsubLess();
     };
   }, []);
@@ -72,7 +76,7 @@ export const Dashboard: React.FC = () => {
             مرحباً بك، {currentUser?.fullName || 'عزيزي الطالب'}
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            تابع فصول ومحاضرات المنهج المسجل به. اضغط على أي فيديو لبدء المشاهدة.
+            تابع فصول وموضوعات ومحاضرات المنهج المسجل به. اضغط على أي فيديو لبدء المشاهدة.
           </p>
         </div>
 
@@ -130,7 +134,7 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Chapters & Lessons of Selected Curriculum */}
+      {/* Chapters & Topics & Lessons Hierarchy */}
       <div className="space-y-8">
         {activeChapters.length > 0 ? (
           activeChapters.map((chapter) => {
@@ -142,8 +146,13 @@ export const Dashboard: React.FC = () => {
               return true;
             });
 
+            const chapterTopics = topics.filter(t => t.chapterId === chapter.id);
+
+            // Separate lessons by topic
+            const unassignedLessons = chapterLessons.filter(l => !l.topicId);
+
             return (
-              <div key={chapter.id} className="glass-panel p-6 rounded-2xl border border-slate-800/90 space-y-4">
+              <div key={chapter.id} className="glass-panel p-6 rounded-2xl border border-slate-800/90 space-y-6">
                 
                 {/* Chapter Title Bar */}
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -155,68 +164,79 @@ export const Dashboard: React.FC = () => {
                   </div>
 
                   <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
-                    {chapterLessons.length} فيديوهات
+                    {chapterLessons.length} فيديوهات • {chapterTopics.length} موضوعات
                   </span>
                 </div>
 
-                {/* Video Cards Grid */}
-                {chapterLessons.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {chapterLessons.map((lesson) => {
-                      const cleanId = extractYouTubeId(lesson.youtubeId);
+                {/* If Topics exist under this Chapter, render Topic Sections */}
+                {chapterTopics.length > 0 ? (
+                  <div className="space-y-6">
+                    {chapterTopics.map((topic) => {
+                      const topicLessons = chapterLessons.filter(l => l.topicId === topic.id);
 
                       return (
-                        <Link
-                          key={lesson.id}
-                          to={`/lesson/${lesson.id}`}
-                          className="group block bg-slate-900/90 rounded-xl overflow-hidden border border-slate-800 hover:border-sky-500/50 transition-all hover:scale-[1.01]"
-                        >
-                          {/* Thumbnail */}
-                          <div className="relative aspect-video bg-slate-950">
-                            <img
-                              src={`https://img.youtube.com/vi/${cleanId}/mqdefault.jpg`}
-                              alt={lesson.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${cleanId}/hqdefault.jpg`;
-                              }}
-                            />
-                            <div className="absolute inset-0 bg-slate-950/20 group-hover:bg-slate-950/0 transition-colors flex items-center justify-center">
-                              <div className="w-10 h-10 rounded-full bg-sky-500/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                                <PlayCircle className="w-5 h-5 fill-current" />
+                        <div key={topic.id} className="bg-slate-950/50 rounded-2xl p-4 sm:p-5 border border-slate-800/70 space-y-4">
+                          
+                          {/* Topic Subheader */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+                                <Layers className="w-3.5 h-3.5" />
                               </div>
+                              <h4 className="text-sm font-bold text-emerald-300">
+                                {topic.title}
+                              </h4>
                             </div>
-                            
-                            {lesson.duration && (
-                              <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-slate-950/80 text-[10px] text-slate-300 flex items-center gap-1 font-mono">
-                                <Clock className="w-3 h-3 text-sky-400" />
-                                <span>{lesson.duration}</span>
-                              </span>
-                            )}
+                            <span className="text-[11px] text-slate-400">
+                              {topicLessons.length} فيديوهات
+                            </span>
                           </div>
 
-                          {/* Info */}
-                          <div className="p-3.5 space-y-2">
-                            <h4 className="text-xs font-bold text-slate-100 group-hover:text-sky-300 transition-colors line-clamp-2">
-                              {lesson.title}
-                            </h4>
-
-                            <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800/80">
-                              <span className="text-slate-500">{activeCurriculum?.title}</span>
-                              <span className="text-sky-400 font-bold flex items-center gap-0.5">
-                                <span>مشاهدة</span>
-                                <ChevronLeft className="w-3 h-3" />
-                              </span>
+                          {/* Topic Video Grid */}
+                          {topicLessons.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {topicLessons.map((lesson) => (
+                                <VideoCard key={lesson.id} lesson={lesson} curriculumTitle={activeCurriculum?.title} topicTitle={topic.title} />
+                              ))}
                             </div>
-                          </div>
-                        </Link>
+                          ) : (
+                            <p className="text-xs text-slate-500 py-3 text-center">
+                              لا توجد فيديوهات مضافة في هذا الموضوع بعد.
+                            </p>
+                          )}
+
+                        </div>
                       );
                     })}
+
+                    {/* Unassigned lessons in chapter (if any) */}
+                    {unassignedLessons.length > 0 && (
+                      <div className="bg-slate-950/40 rounded-2xl p-4 sm:p-5 border border-slate-800/50 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-400">دروس عامة / غير مصنفة</h4>
+                          <span className="text-[11px] text-slate-500">{unassignedLessons.length} فيديوهات</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {unassignedLessons.map((lesson) => (
+                            <VideoCard key={lesson.id} lesson={lesson} curriculumTitle={activeCurriculum?.title} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 py-4 text-center">
-                    لا توجد فيديوهات مضافة في هذا الفصل حتى الآن.
-                  </p>
+                  /* Backwards-compatible: No topics created yet, render lessons directly */
+                  chapterLessons.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {chapterLessons.map((lesson) => (
+                        <VideoCard key={lesson.id} lesson={lesson} curriculumTitle={activeCurriculum?.title} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 py-4 text-center">
+                      لا توجد فيديوهات مضافة في هذا الفصل حتى الآن.
+                    </p>
+                  )
                 )}
 
               </div>
@@ -230,5 +250,62 @@ export const Dashboard: React.FC = () => {
       </div>
 
     </div>
+  );
+};
+
+// Reusable Video Card Component
+const VideoCard: React.FC<{ lesson: Lesson; curriculumTitle?: string; topicTitle?: string }> = ({ 
+  lesson, 
+  curriculumTitle,
+  topicTitle 
+}) => {
+  const cleanId = extractYouTubeId(lesson.youtubeId);
+
+  return (
+    <Link
+      to={`/lesson/${lesson.id}`}
+      className="group block bg-slate-900/90 rounded-xl overflow-hidden border border-slate-800 hover:border-sky-500/50 transition-all hover:scale-[1.01]"
+    >
+      {/* Thumbnail */}
+      <div className="relative aspect-video bg-slate-950">
+        <img
+          src={`https://img.youtube.com/vi/${cleanId}/mqdefault.jpg`}
+          alt={lesson.title}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${cleanId}/hqdefault.jpg`;
+          }}
+        />
+        <div className="absolute inset-0 bg-slate-950/20 group-hover:bg-slate-950/0 transition-colors flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-sky-500/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <PlayCircle className="w-5 h-5 fill-current" />
+          </div>
+        </div>
+        
+        {lesson.duration && (
+          <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-slate-950/80 text-[10px] text-slate-300 flex items-center gap-1 font-mono">
+            <Clock className="w-3 h-3 text-sky-400" />
+            <span>{lesson.duration}</span>
+          </span>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="p-3.5 space-y-2">
+        <h4 className="text-xs font-bold text-slate-100 group-hover:text-sky-300 transition-colors line-clamp-2">
+          {lesson.title}
+        </h4>
+
+        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800/80">
+          <span className="text-slate-500 truncate max-w-[130px]">
+            {topicTitle || curriculumTitle || ''}
+          </span>
+          <span className="text-sky-400 font-bold flex items-center gap-0.5 shrink-0">
+            <span>مشاهدة</span>
+            <ChevronLeft className="w-3 h-3" />
+          </span>
+        </div>
+      </div>
+    </Link>
   );
 };

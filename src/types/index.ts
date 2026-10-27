@@ -1,3 +1,5 @@
+// src/types/index.ts - Unified type definitions for JUDGE platform (Curriculum → Chapter → Topic → Video hierarchy)
+
 export type UserRole = 'admin' | 'student';
 
 export interface UserProfile {
@@ -5,12 +7,12 @@ export interface UserProfile {
   email: string;
   fullName: string;
   role: UserRole;
-  curriculumId?: string; // The curriculum chosen by the student
+  curriculumId?: string;
   curriculumTitle?: string;
   createdAt?: any;
 }
 
-// Curriculum / Course (المنهج)
+// Curriculum (المنهج)
 export interface Curriculum {
   id: string;
   title: string;
@@ -28,14 +30,28 @@ export interface Chapter {
   createdAt?: any;
 }
 
-// Lesson / Video (الدرس / الفيديو)
+// Topic (الموضوع) – under Chapter
+export interface Topic {
+  id: string;
+  curriculumId: string;
+  chapterId: string;
+  title: string;
+  order: number;
+  createdAt?: any;
+}
+
+// Video / Lesson (الدرس / الفيديو) – belongs to Topic
 export interface Lesson {
   id: string;
   curriculumId: string;
   chapterId: string;
+  topicId?: string;
   title: string;
   youtubeId: string;
   order: number;
   duration?: string;
   createdAt?: any;
 }
+
+export const STUDENT_GROUPS = ['مجموعة 1', 'مجموعة 2', 'مجموعة 3'] as const;
+export type StudentGroup = typeof STUDENT_GROUPS[number];
