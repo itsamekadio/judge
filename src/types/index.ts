@@ -50,6 +50,8 @@ export interface Lesson {
   youtubeId: string;
   order: number;
   duration?: string;
+  pdfUrl?: string;     // Optional PDF sheet URL (Firebase Storage)
+  pdfName?: string;    // Optional original file name
   createdAt?: any;
 }
 

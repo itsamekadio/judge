@@ -3,13 +3,19 @@ import {
   doc, 
   setDoc, 
   addDoc, 
+  updateDoc,
   deleteDoc, 
   query, 
   orderBy, 
   serverTimestamp, 
   onSnapshot 
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from 'firebase/storage';
+import { db, storage } from './firebase';
 import { Curriculum, Chapter, Topic, Lesson } from '../types';
 
 // Helper to extract clean 11-char YouTube ID
@@ -187,6 +193,15 @@ export const CoursesService = {
     }
   },
 
+  // Upload PDF sheet to Firebase Storage and get download URL
+  uploadPdfSheet: async (file: File): Promise<{ url: string; name: string }> => {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storageRef = ref(storage, `sheets/${Date.now()}_${safeName}`);
+    await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(storageRef);
+    return { url, name: file.name };
+  },
+
   addLesson: async (data: Omit<Lesson, 'id'>): Promise<Lesson> => {
     const cleanYt = extractYouTubeId(data.youtubeId);
     const docRef = await addDoc(collection(db, 'lessons'), {
@@ -197,6 +212,8 @@ export const CoursesService = {
       youtubeId: cleanYt,
       order: Number(data.order) || 1,
       duration: data.duration || '',
+      pdfUrl: data.pdfUrl || '',
+      pdfName: data.pdfName || '',
       createdAt: serverTimestamp()
     });
 
@@ -207,6 +224,22 @@ export const CoursesService = {
       order: Number(data.order) || 1,
       createdAt: new Date().toISOString()
     };
+  },
+
+  updateLessonPdf: async (lessonId: string, pdfUrl: string, pdfName: string): Promise<void> => {
+    const lessonRef = doc(db, 'lessons', lessonId);
+    await updateDoc(lessonRef, {
+      pdfUrl,
+      pdfName
+    });
+  },
+
+  removeLessonPdf: async (lessonId: string): Promise<void> => {
+    const lessonRef = doc(db, 'lessons', lessonId);
+    await updateDoc(lessonRef, {
+      pdfUrl: '',
+      pdfName: ''
+    });
   },
 
   deleteLesson: async (id: string): Promise<void> => {

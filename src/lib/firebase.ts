@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCZXSOxcSgq4W4C_WRS3oebbCe5DBGb6y0",
@@ -21,3 +22,6 @@ export const auth = getAuth(app);
 
 // Cloud Firestore
 export const db = getFirestore(app);
+
+// Cloud Storage for PDF sheets & assets
+export const storage = getStorage(app);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   CoursesService, 
@@ -14,7 +14,11 @@ import {
   Layers,
   Trash2, 
   CheckCircle, 
-  Eye
+  Eye,
+  FileText,
+  UploadCloud,
+  Loader2,
+  X
 } from 'lucide-react';
 
 export const Admin: React.FC = () => {
@@ -52,6 +56,16 @@ export const Admin: React.FC = () => {
   const [youtubeInput, setYoutubeInput] = useState('');
   const [videoDuration, setVideoDuration] = useState('30 دقيقة');
   const [videoSuccess, setVideoSuccess] = useState('');
+
+  // PDF upload for new video
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // PDF modal for existing video
+  const [editingLessonPdf, setEditingLessonPdf] = useState<Lesson | null>(null);
+  const [modalPdfFile, setModalPdfFile] = useState<File | null>(null);
+  const [isModalUploading, setIsModalUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsubCurrs = CoursesService.subscribeCurriculums((c) => {
@@ -196,7 +210,18 @@ export const Admin: React.FC = () => {
     }
 
     setGlobalError(null);
+    setIsUploading(true);
+
     try {
+      let uploadedPdfUrl = '';
+      let uploadedPdfName = '';
+
+      if (pdfFile) {
+        const uploadRes = await CoursesService.uploadPdfSheet(pdfFile);
+        uploadedPdfUrl = uploadRes.url;
+        uploadedPdfName = uploadRes.name;
+      }
+
       const filteredLessons = lessons.filter(l => 
         selectedTopicId ? l.topicId === selectedTopicId : l.chapterId === selectedChapterId
       );
@@ -208,16 +233,42 @@ export const Admin: React.FC = () => {
         title: videoTitle.trim(),
         youtubeId: cleanYt,
         duration: videoDuration || '30 دقيقة',
-        order: filteredLessons.length + 1
+        order: filteredLessons.length + 1,
+        pdfUrl: uploadedPdfUrl,
+        pdfName: uploadedPdfName
       });
 
-      setVideoSuccess('تم نشر الفيديو وربطه بنجاح!');
+      setVideoSuccess('تم نشر الفيديو وربط الشيت بنجاح!');
       setVideoTitle('');
       setYoutubeInput('');
+      setPdfFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setTimeout(() => setVideoSuccess(''), 4000);
     } catch (err: any) {
       console.error(err);
       setGlobalError(`خطأ في إضافة الفيديو: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Attach/Update PDF on Existing Lesson
+  const handleUpdateExistingPdf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLessonPdf || !modalPdfFile) return;
+
+    setIsModalUploading(true);
+    setGlobalError(null);
+    try {
+      const uploadRes = await CoursesService.uploadPdfSheet(modalPdfFile);
+      await CoursesService.updateLessonPdf(editingLessonPdf.id, uploadRes.url, uploadRes.name);
+      setEditingLessonPdf(null);
+      setModalPdfFile(null);
+    } catch (err: any) {
+      console.error(err);
+      setGlobalError(`خطأ في رفع الشيت: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
+    } finally {
+      setIsModalUploading(false);
     }
   };
 
@@ -237,7 +288,7 @@ export const Admin: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black text-white">لوحة تحكم المشرف (Admin Panel)</h1>
-            <p className="text-xs text-slate-400">المهندس عبد الرحمن القاضي • الهيكل: منهج → فصل → موضوع → فيديو</p>
+            <p className="text-xs text-slate-400">المهندس عبد الرحمن القاضي • الهيكل: منهج → فصل → موضوع → فيديو وشيتات PDF</p>
           </div>
         </div>
         <div className="bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 text-xs text-slate-300">
@@ -251,7 +302,7 @@ export const Admin: React.FC = () => {
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm space-y-2">
           <div className="flex items-center gap-2 font-bold">
             <span>⚠️</span>
-            <span>خطأ في قاعدة البيانات (Firestore Error)</span>
+            <span>خطأ في العملية</span>
           </div>
           <p className="text-xs font-mono break-all">{globalError}</p>
           <button onClick={() => setGlobalError(null)} className="text-xs text-slate-400 underline">إخفاء</button>
@@ -489,14 +540,14 @@ export const Admin: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Add Video with Dropdowns (Curriculum -> Chapter -> Topic) */}
+      {/* 4. Add Video with PDF Sheet Upload */}
       <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-amber-500/40 space-y-6">
         <div className="flex items-center gap-2 text-amber-400">
           <Video className="w-6 h-6" />
           <div>
-            <h2 className="text-lg font-bold text-white">4. إضافة ونشر فيديو جديد (Add Video)</h2>
+            <h2 className="text-lg font-bold text-white">4. إضافة ونشر فيديو جديد مع شيت PDF (Add Video)</h2>
             <p className="text-xs text-slate-400">
-              اختر المنهج ← الفصل ← الموضوع، ثم اكتب عنوان الفيديو وضع رابط يوتيوب
+              اختر المنهج ← الفصل ← الموضوع، ثم اكتب عنوان الدرس وارفع الشيت (اختياري)
             </p>
           </div>
         </div>
@@ -583,7 +634,7 @@ export const Admin: React.FC = () => {
                 required
                 value={videoTitle}
                 onChange={(e) => setVideoTitle(e.target.value)}
-                placeholder="مثال: شرح الجمع والطرح في الكسور..."
+                placeholder="مثال: شرح جمع وطرح الكسور..."
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
               />
             </div>
@@ -606,6 +657,44 @@ export const Admin: React.FC = () => {
 
           </div>
 
+          {/* Optional PDF Sheet Attachment */}
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+            <label className="block text-xs font-bold text-slate-200 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-rose-400" />
+              <span>إرفاق شيت / ملزمة الدرس بصيغة PDF (اختياري)</span>
+            </label>
+            <p className="text-[11px] text-slate-400">
+              يمكنك رفع ملف PDF الآن ليظهر لطلابه زر تحميل الشيت مباشرة أسفل الفيديو. (غير إلزامي)
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setPdfFile(e.target.files[0]);
+                  } else {
+                    setPdfFile(null);
+                  }
+                }}
+                className="text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer"
+              />
+              {pdfFile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfFile(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="text-xs text-slate-500 hover:text-rose-400"
+                >
+                  إلغاء الملف
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* YouTube Preview */}
           {previewId && previewId.length === 11 && (
             <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
@@ -622,11 +711,20 @@ export const Admin: React.FC = () => {
 
           <button
             type="submit"
-            disabled={!selectedCurriculumId || !selectedChapterId}
+            disabled={!selectedCurriculumId || !selectedChapterId || isUploading}
             className="w-full py-3.5 px-6 rounded-xl font-black text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <Video className="w-5 h-5" />
-            <span>نشر الفيديو في المنهج والفصل والموضوع فوراً</span>
+            {isUploading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>جاري رفع الشيت ونشر الفيديو...</span>
+              </>
+            ) : (
+              <>
+                <Video className="w-5 h-5" />
+                <span>نشر الفيديو في المنهج والفصل والموضوع فوراً</span>
+              </>
+            )}
           </button>
         </form>
       </div>
@@ -635,7 +733,7 @@ export const Admin: React.FC = () => {
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <h3 className="font-bold text-white text-base">قائمة الفيديوهات المنشورة ({lessons.length})</h3>
-          <span className="text-xs text-slate-400">تحديث لحظي مع Cloud Firestore</span>
+          <span className="text-xs text-slate-400">تحديث لحظي مع Cloud Firestore & Storage</span>
         </div>
 
         {lessons.length > 0 ? (
@@ -646,7 +744,8 @@ export const Admin: React.FC = () => {
                   <th className="py-2.5 px-3">الدرس</th>
                   <th className="py-2.5 px-3">المنهج</th>
                   <th className="py-2.5 px-3">الفصل</th>
-                  <th className="py-2.5 px-3">الموضوع (Topic)</th>
+                  <th className="py-2.5 px-3">الموضوع</th>
+                  <th className="py-2.5 px-3">شيت PDF</th>
                   <th className="py-2.5 px-3">معرّف YouTube</th>
                   <th className="py-2.5 px-3 text-center">إجراءات</th>
                 </tr>
@@ -664,6 +763,46 @@ export const Admin: React.FC = () => {
                       <td className="py-3 px-3 text-indigo-300">{chap?.title || 'عام'}</td>
                       <td className="py-3 px-3 text-emerald-400 font-medium">
                         {top ? top.title : <span className="text-slate-500">عام</span>}
+                      </td>
+                      <td className="py-3 px-3">
+                        {lesson.pdfUrl ? (
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={lesson.pdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-rose-400 hover:text-rose-300 flex items-center gap-1 font-semibold"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>عرض الشيت</span>
+                            </a>
+                            <button
+                              onClick={() => setEditingLessonPdf(lesson)}
+                              className="text-[10px] text-slate-400 underline hover:text-white"
+                            >
+                              تغيير
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm('هل تريد إزالة الشيت من هذا الدرس؟')) {
+                                  CoursesService.removeLessonPdf(lesson.id);
+                                }
+                              }}
+                              className="text-[10px] text-rose-500 hover:text-rose-400"
+                              title="حذف الشيت"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingLessonPdf(lesson)}
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
+                          >
+                            <UploadCloud className="w-3 h-3 text-sky-400" />
+                            <span>+ إضافة شيت</span>
+                          </button>
+                        )}
                       </td>
                       <td className="py-3 px-3 font-mono text-slate-400 dir-ltr text-left">{lesson.youtubeId}</td>
                       <td className="py-3 px-3 text-center">
@@ -698,6 +837,83 @@ export const Admin: React.FC = () => {
           <p className="text-xs text-slate-500 py-6 text-center">لا توجد فيديوهات منشورة حتى الآن.</p>
         )}
       </div>
+
+      {/* Modal: Attach / Replace PDF on Existing Lesson */}
+      {editingLessonPdf && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                <FileText className="w-4 h-4" />
+                <span>إرفاق شيت PDF للدرس</span>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingLessonPdf(null);
+                  setModalPdfFile(null);
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-300">
+              <span className="text-slate-400 block mb-1">الدرس المحدد:</span>
+              <span className="font-bold text-white text-sm">{editingLessonPdf.title}</span>
+            </div>
+
+            <form onSubmit={handleUpdateExistingPdf} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-2">
+                  اختر ملف الـ PDF:
+                </label>
+                <input
+                  type="file"
+                  required
+                  accept=".pdf,application/pdf"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setModalPdfFile(e.target.files[0]);
+                    }
+                  }}
+                  className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingLessonPdf(null);
+                    setModalPdfFile(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={!modalPdfFile || isModalUploading}
+                  className="px-4 py-2 rounded-xl bg-rose-500 text-white text-xs font-bold hover:bg-rose-400 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isModalUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>جاري الرفع...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-4 h-4" />
+                      <span>رفع وحفظ الشيت</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
