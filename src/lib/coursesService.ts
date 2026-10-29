@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { 
   ref, 
-  uploadBytes, 
+  uploadBytesResumable, 
   getDownloadURL 
 } from 'firebase/storage';
 import { db, storage } from './firebase';
@@ -193,13 +193,42 @@ export const CoursesService = {
     }
   },
 
-  // Upload PDF sheet to Firebase Storage and get download URL
-  uploadPdfSheet: async (file: File): Promise<{ url: string; name: string }> => {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storageRef = ref(storage, `sheets/${Date.now()}_${safeName}`);
-    await uploadBytes(storageRef, file);
-    const url = await getDownloadURL(storageRef);
-    return { url, name: file.name };
+  // Resumable chunked upload with live progress callback (0 - 100%)
+  uploadPdfSheetResumable: (
+    file: File,
+    onProgress?: (percent: number, transferredMB: string, totalMB: string) => void
+  ): Promise<{ url: string; name: string }> => {
+    return new Promise((resolve, reject) => {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storageRef = ref(storage, `sheets/${Date.now()}_${safeName}`);
+      const uploadTask = uploadBytesResumable(storageRef, file, {
+        contentType: 'application/pdf'
+      });
+
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          const transferredMB = (snapshot.bytesTransferred / (1024 * 1024)).toFixed(1);
+          const totalMB = (snapshot.totalBytes / (1024 * 1024)).toFixed(1);
+          if (onProgress) {
+            onProgress(Math.round(progress), transferredMB, totalMB);
+          }
+        },
+        (error) => {
+          console.error('Upload failed:', error);
+          reject(error);
+        },
+        async () => {
+          try {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve({ url, name: file.name });
+          } catch (err) {
+            reject(err);
+          }
+        }
+      );
+    });
   },
 
   addLesson: async (data: Omit<Lesson, 'id'>): Promise<Lesson> => {

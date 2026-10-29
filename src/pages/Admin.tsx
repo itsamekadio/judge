@@ -18,7 +18,8 @@ import {
   FileText,
   UploadCloud,
   Loader2,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 
 export const Admin: React.FC = () => {
@@ -57,13 +58,17 @@ export const Admin: React.FC = () => {
   const [videoDuration, setVideoDuration] = useState('30 دقيقة');
   const [videoSuccess, setVideoSuccess] = useState('');
 
-  // PDF upload for new video
+  // PDF upload with Live Progress for new video
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
 
-  // PDF modal for existing video
+  // PDF modal with Live Progress for existing video
   const [editingLessonPdf, setEditingLessonPdf] = useState<Lesson | null>(null);
   const [modalPdfFile, setModalPdfFile] = useState<File | null>(null);
+  const [modalUploadProgress, setModalUploadProgress] = useState<number | null>(null);
+  const [modalStatusText, setModalStatusText] = useState<string>('');
   const [isModalUploading, setIsModalUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,15 +216,25 @@ export const Admin: React.FC = () => {
 
     setGlobalError(null);
     setIsUploading(true);
+    setUploadProgress(null);
+    setUploadStatusText('');
 
     try {
       let uploadedPdfUrl = '';
       let uploadedPdfName = '';
 
       if (pdfFile) {
-        const uploadRes = await CoursesService.uploadPdfSheet(pdfFile);
+        setUploadStatusText('بدء رفع ملف الـ PDF...');
+        const uploadRes = await CoursesService.uploadPdfSheetResumable(
+          pdfFile,
+          (percent, transferredMB, totalMB) => {
+            setUploadProgress(percent);
+            setUploadStatusText(`جاري الرفع: ${transferredMB} MB من ${totalMB} MB (${percent}%)`);
+          }
+        );
         uploadedPdfUrl = uploadRes.url;
         uploadedPdfName = uploadRes.name;
+        setUploadStatusText('تم رفع الشيت بنجاح! جاري حفظ بيانات الدرس...');
       }
 
       const filteredLessons = lessons.filter(l => 
@@ -242,11 +257,13 @@ export const Admin: React.FC = () => {
       setVideoTitle('');
       setYoutubeInput('');
       setPdfFile(null);
+      setUploadProgress(null);
+      setUploadStatusText('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       setTimeout(() => setVideoSuccess(''), 4000);
     } catch (err: any) {
       console.error(err);
-      setGlobalError(`خطأ في إضافة الفيديو: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
+      setGlobalError(`خطأ في رفع الملف أو إضافة الفيديو: ${err?.code || err?.message || 'تحقق من الاتصال بالإنترنت'}`);
     } finally {
       setIsUploading(false);
     }
@@ -258,15 +275,26 @@ export const Admin: React.FC = () => {
     if (!editingLessonPdf || !modalPdfFile) return;
 
     setIsModalUploading(true);
+    setModalUploadProgress(null);
+    setModalStatusText('بدء الرفع...');
     setGlobalError(null);
+
     try {
-      const uploadRes = await CoursesService.uploadPdfSheet(modalPdfFile);
+      const uploadRes = await CoursesService.uploadPdfSheetResumable(
+        modalPdfFile,
+        (percent, transferredMB, totalMB) => {
+          setModalUploadProgress(percent);
+          setModalStatusText(`جاري الرفع: ${transferredMB} MB من ${totalMB} MB (${percent}%)`);
+        }
+      );
       await CoursesService.updateLessonPdf(editingLessonPdf.id, uploadRes.url, uploadRes.name);
       setEditingLessonPdf(null);
       setModalPdfFile(null);
+      setModalUploadProgress(null);
+      setModalStatusText('');
     } catch (err: any) {
       console.error(err);
-      setGlobalError(`خطأ في رفع الشيت: ${err?.code || err?.message || 'تحقق من الصلاحيات'}`);
+      setGlobalError(`خطأ في رفع الشيت: ${err?.code || err?.message || 'تحقق من الاتصال بالإنترنت'}`);
     } finally {
       setIsModalUploading(false);
     }
@@ -301,8 +329,8 @@ export const Admin: React.FC = () => {
       {globalError && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm space-y-2">
           <div className="flex items-center gap-2 font-bold">
-            <span>⚠️</span>
-            <span>خطأ في العملية</span>
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>تنبيه / خطأ</span>
           </div>
           <p className="text-xs font-mono break-all">{globalError}</p>
           <button onClick={() => setGlobalError(null)} className="text-xs text-slate-400 underline">إخفاء</button>
@@ -540,7 +568,7 @@ export const Admin: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Add Video with PDF Sheet Upload */}
+      {/* 4. Add Video with PDF Sheet Upload (Resumable + Live Progress Bar) */}
       <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-amber-500/40 space-y-6">
         <div className="flex items-center gap-2 text-amber-400">
           <Video className="w-6 h-6" />
@@ -658,19 +686,29 @@ export const Admin: React.FC = () => {
           </div>
 
           {/* Optional PDF Sheet Attachment */}
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-            <label className="block text-xs font-bold text-slate-200 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-rose-400" />
-              <span>إرفاق شيت / ملزمة الدرس بصيغة PDF (اختياري)</span>
-            </label>
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-200 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-rose-400" />
+                <span>إرفاق شيت / ملزمة الدرس بصيغة PDF (اختياري)</span>
+              </label>
+              {pdfFile && (
+                <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                  {(pdfFile.size / (1024 * 1024)).toFixed(2)} MB
+                </span>
+              )}
+            </div>
+
             <p className="text-[11px] text-slate-400">
-              يمكنك رفع ملف PDF الآن ليظهر لطلابه زر تحميل الشيت مباشرة أسفل الفيديو. (غير إلزامي)
+              اختر ملف PDF من جهازك. يتم رفعه تلقائياً مع إظهار شريط تقدم مباشر وفوري.
             </p>
+
             <div className="flex items-center gap-3">
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".pdf,application/pdf"
+                disabled={isUploading}
                 onChange={(e) => {
                   if (e.target.files && e.target.files[0]) {
                     setPdfFile(e.target.files[0]);
@@ -678,9 +716,9 @@ export const Admin: React.FC = () => {
                     setPdfFile(null);
                   }
                 }}
-                className="text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer"
+                className="text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
               />
-              {pdfFile && (
+              {pdfFile && !isUploading && (
                 <button
                   type="button"
                   onClick={() => {
@@ -693,6 +731,22 @@ export const Admin: React.FC = () => {
                 </button>
               )}
             </div>
+
+            {/* Live Progress Bar for New Video Form */}
+            {isUploading && uploadProgress !== null && (
+              <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                <div className="flex justify-between text-xs text-slate-300 font-medium">
+                  <span>{uploadStatusText}</span>
+                  <span className="font-bold text-rose-400">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-200"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* YouTube Preview */}
@@ -717,7 +771,7 @@ export const Admin: React.FC = () => {
             {isUploading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                <span>جاري رفع الشيت ونشر الفيديو...</span>
+                <span>{uploadProgress !== null ? `جاري الرفع (${uploadProgress}%)` : 'جاري المعالجة...'}</span>
               </>
             ) : (
               <>
@@ -777,7 +831,12 @@ export const Admin: React.FC = () => {
                               <span>عرض الشيت</span>
                             </a>
                             <button
-                              onClick={() => setEditingLessonPdf(lesson)}
+                              onClick={() => {
+                                setEditingLessonPdf(lesson);
+                                setModalPdfFile(null);
+                                setModalUploadProgress(null);
+                                setModalStatusText('');
+                              }}
                               className="text-[10px] text-slate-400 underline hover:text-white"
                             >
                               تغيير
@@ -796,7 +855,12 @@ export const Admin: React.FC = () => {
                           </div>
                         ) : (
                           <button
-                            onClick={() => setEditingLessonPdf(lesson)}
+                            onClick={() => {
+                              setEditingLessonPdf(lesson);
+                              setModalPdfFile(null);
+                              setModalUploadProgress(null);
+                              setModalStatusText('');
+                            }}
                             className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1"
                           >
                             <UploadCloud className="w-3 h-3 text-sky-400" />
@@ -838,24 +902,27 @@ export const Admin: React.FC = () => {
         )}
       </div>
 
-      {/* Modal: Attach / Replace PDF on Existing Lesson */}
+      {/* Modal: Attach / Replace PDF on Existing Lesson with Progress Bar */}
       {editingLessonPdf && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
                 <FileText className="w-4 h-4" />
-                <span>إرفاق شيت PDF للدرس</span>
+                <span>إرفاق / تعديل شيت الدرس (PDF)</span>
               </div>
-              <button
-                onClick={() => {
-                  setEditingLessonPdf(null);
-                  setModalPdfFile(null);
-                }}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              {!isModalUploading && (
+                <button
+                  onClick={() => {
+                    setEditingLessonPdf(null);
+                    setModalPdfFile(null);
+                    setModalUploadProgress(null);
+                  }}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
             </div>
 
             <div className="text-xs text-slate-300">
@@ -865,30 +932,56 @@ export const Admin: React.FC = () => {
 
             <form onSubmit={handleUpdateExistingPdf} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-2">
-                  اختر ملف الـ PDF:
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-300">
+                    اختر ملف الـ PDF:
+                  </label>
+                  {modalPdfFile && (
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {(modalPdfFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  )}
+                </div>
                 <input
                   type="file"
                   required
+                  disabled={isModalUploading}
                   accept=".pdf,application/pdf"
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
                       setModalPdfFile(e.target.files[0]);
                     }
                   }}
-                  className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer"
+                  className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
                 />
               </div>
+
+              {/* Modal Live Progress Bar */}
+              {isModalUploading && modalUploadProgress !== null && (
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between text-xs text-slate-300 font-medium">
+                    <span>{modalStatusText}</span>
+                    <span className="font-bold text-rose-400">{modalUploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-200"
+                      style={{ width: `${modalUploadProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
+                  disabled={isModalUploading}
                   onClick={() => {
                     setEditingLessonPdf(null);
                     setModalPdfFile(null);
+                    setModalUploadProgress(null);
                   }}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700"
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700 disabled:opacity-50"
                 >
                   إلغاء
                 </button>
