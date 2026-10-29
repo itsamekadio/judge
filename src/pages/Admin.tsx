@@ -17,6 +17,7 @@ import {
   Eye,
   FileText,
   UploadCloud,
+  Link as LinkIcon,
   Loader2,
   X,
   AlertCircle
@@ -58,14 +59,18 @@ export const Admin: React.FC = () => {
   const [videoDuration, setVideoDuration] = useState('30 دقيقة');
   const [videoSuccess, setVideoSuccess] = useState('');
 
-  // PDF upload with Live Progress for new video
+  // PDF Attachment (Dual Mode: URL or Upload)
+  const [pdfMode, setPdfMode] = useState<'url' | 'upload'>('url');
+  const [pdfUrlInput, setPdfUrlInput] = useState('');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
 
-  // PDF modal with Live Progress for existing video
+  // PDF modal for existing video
   const [editingLessonPdf, setEditingLessonPdf] = useState<Lesson | null>(null);
+  const [modalPdfMode, setModalPdfMode] = useState<'url' | 'upload'>('url');
+  const [modalPdfUrlInput, setModalPdfUrlInput] = useState('');
   const [modalPdfFile, setModalPdfFile] = useState<File | null>(null);
   const [modalUploadProgress, setModalUploadProgress] = useState<number | null>(null);
   const [modalStatusText, setModalStatusText] = useState<string>('');
@@ -220,11 +225,14 @@ export const Admin: React.FC = () => {
     setUploadStatusText('');
 
     try {
-      let uploadedPdfUrl = '';
-      let uploadedPdfName = '';
+      let finalPdfUrl = '';
+      let finalPdfName = '';
 
-      if (pdfFile) {
-        setUploadStatusText('بدء رفع ملف الـ PDF...');
+      if (pdfMode === 'url' && pdfUrlInput.trim()) {
+        finalPdfUrl = pdfUrlInput.trim();
+        finalPdfName = 'شيت الدرس (رابط مباشر)';
+      } else if (pdfMode === 'upload' && pdfFile) {
+        setUploadStatusText('بدء رفع ملف الـ PDF إلى Cloud Storage...');
         const uploadRes = await CoursesService.uploadPdfSheetResumable(
           pdfFile,
           (percent, transferredMB, totalMB) => {
@@ -232,8 +240,8 @@ export const Admin: React.FC = () => {
             setUploadStatusText(`جاري الرفع: ${transferredMB} MB من ${totalMB} MB (${percent}%)`);
           }
         );
-        uploadedPdfUrl = uploadRes.url;
-        uploadedPdfName = uploadRes.name;
+        finalPdfUrl = uploadRes.url;
+        finalPdfName = uploadRes.name;
         setUploadStatusText('تم رفع الشيت بنجاح! جاري حفظ بيانات الدرس...');
       }
 
@@ -249,13 +257,14 @@ export const Admin: React.FC = () => {
         youtubeId: cleanYt,
         duration: videoDuration || '30 دقيقة',
         order: filteredLessons.length + 1,
-        pdfUrl: uploadedPdfUrl,
-        pdfName: uploadedPdfName
+        pdfUrl: finalPdfUrl,
+        pdfName: finalPdfName
       });
 
       setVideoSuccess('تم نشر الفيديو وربط الشيت بنجاح!');
       setVideoTitle('');
       setYoutubeInput('');
+      setPdfUrlInput('');
       setPdfFile(null);
       setUploadProgress(null);
       setUploadStatusText('');
@@ -263,7 +272,7 @@ export const Admin: React.FC = () => {
       setTimeout(() => setVideoSuccess(''), 4000);
     } catch (err: any) {
       console.error(err);
-      setGlobalError(`خطأ في رفع الملف أو إضافة الفيديو: ${err?.code || err?.message || 'تحقق من الاتصال بالإنترنت'}`);
+      setGlobalError(err?.message || 'فشل في رفع الشيت أو إضافة الفيديو.');
     } finally {
       setIsUploading(false);
     }
@@ -272,29 +281,51 @@ export const Admin: React.FC = () => {
   // Attach/Update PDF on Existing Lesson
   const handleUpdateExistingPdf = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingLessonPdf || !modalPdfFile) return;
+    if (!editingLessonPdf) return;
 
     setIsModalUploading(true);
     setModalUploadProgress(null);
-    setModalStatusText('بدء الرفع...');
+    setModalStatusText('بدء الحفظ...');
     setGlobalError(null);
 
     try {
-      const uploadRes = await CoursesService.uploadPdfSheetResumable(
-        modalPdfFile,
-        (percent, transferredMB, totalMB) => {
-          setModalUploadProgress(percent);
-          setModalStatusText(`جاري الرفع: ${transferredMB} MB من ${totalMB} MB (${percent}%)`);
+      let finalPdfUrl = '';
+      let finalPdfName = '';
+
+      if (modalPdfMode === 'url') {
+        if (!modalPdfUrlInput.trim()) {
+          alert('يرجى لصق رابط الشيت');
+          setIsModalUploading(false);
+          return;
         }
-      );
-      await CoursesService.updateLessonPdf(editingLessonPdf.id, uploadRes.url, uploadRes.name);
+        finalPdfUrl = modalPdfUrlInput.trim();
+        finalPdfName = 'شيت الدرس (رابط مباشر)';
+      } else {
+        if (!modalPdfFile) {
+          alert('يرجى اختيار ملف PDF');
+          setIsModalUploading(false);
+          return;
+        }
+        const uploadRes = await CoursesService.uploadPdfSheetResumable(
+          modalPdfFile,
+          (percent, transferredMB, totalMB) => {
+            setModalUploadProgress(percent);
+            setModalStatusText(`جاري الرفع: ${transferredMB} MB من ${totalMB} MB (${percent}%)`);
+          }
+        );
+        finalPdfUrl = uploadRes.url;
+        finalPdfName = uploadRes.name;
+      }
+
+      await CoursesService.updateLessonPdf(editingLessonPdf.id, finalPdfUrl, finalPdfName);
       setEditingLessonPdf(null);
       setModalPdfFile(null);
+      setModalPdfUrlInput('');
       setModalUploadProgress(null);
       setModalStatusText('');
     } catch (err: any) {
       console.error(err);
-      setGlobalError(`خطأ في رفع الشيت: ${err?.code || err?.message || 'تحقق من الاتصال بالإنترنت'}`);
+      setGlobalError(err?.message || 'فشل في تحديث الشيت.');
     } finally {
       setIsModalUploading(false);
     }
@@ -325,15 +356,20 @@ export const Admin: React.FC = () => {
         </div>
       </div>
 
-      {/* Global Error Banner */}
+      {/* Global Error Banner with clear advice */}
       {globalError && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm space-y-2">
-          <div className="flex items-center gap-2 font-bold">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>تنبيه / خطأ</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-bold">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>تنبيه / خطأ</span>
+            </div>
+            <button onClick={() => setGlobalError(null)} className="text-xs text-slate-400 underline">إخفاء</button>
           </div>
-          <p className="text-xs font-mono break-all">{globalError}</p>
-          <button onClick={() => setGlobalError(null)} className="text-xs text-slate-400 underline">إخفاء</button>
+          <p className="text-xs break-all leading-relaxed">{globalError}</p>
+          <div className="p-2.5 rounded-xl bg-slate-950/80 text-xs text-amber-300 border border-amber-500/20">
+            💡 <strong>حل سريع وفوري بدون انتظار:</strong> يمكنك استخدام خيار <strong>"رابط الشيت (جوجل درايف / مباشر)"</strong> ولصق رابط الملف مباشرة في ثانية واحدة!
+          </div>
         </div>
       )}
 
@@ -568,14 +604,14 @@ export const Admin: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Add Video with PDF Sheet Upload (Resumable + Live Progress Bar) */}
+      {/* 4. Add Video with PDF Sheet (Dual Option: Drive / Direct Link OR Direct Upload) */}
       <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-amber-500/40 space-y-6">
         <div className="flex items-center gap-2 text-amber-400">
           <Video className="w-6 h-6" />
           <div>
             <h2 className="text-lg font-bold text-white">4. إضافة ونشر فيديو جديد مع شيت PDF (Add Video)</h2>
             <p className="text-xs text-slate-400">
-              اختر المنهج ← الفصل ← الموضوع، ثم اكتب عنوان الدرس وارفع الشيت (اختياري)
+              اختر المنهج ← الفصل ← الموضوع، ثم اكتب عنوان الدرس وضع رابط الفيديو والشيت (اختياري)
             </p>
           </div>
         </div>
@@ -685,66 +721,100 @@ export const Admin: React.FC = () => {
 
           </div>
 
-          {/* Optional PDF Sheet Attachment */}
+          {/* Dual PDF Sheet Attachment: Instant URL OR File Upload */}
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="block text-xs font-bold text-slate-200 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-rose-400" />
                 <span>إرفاق شيت / ملزمة الدرس بصيغة PDF (اختياري)</span>
               </label>
-              {pdfFile && (
-                <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                  {(pdfFile.size / (1024 * 1024)).toFixed(2)} MB
-                </span>
-              )}
-            </div>
 
-            <p className="text-[11px] text-slate-400">
-              اختر ملف PDF من جهازك. يتم رفعه تلقائياً مع إظهار شريط تقدم مباشر وفوري.
-            </p>
-
-            <div className="flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,application/pdf"
-                disabled={isUploading}
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setPdfFile(e.target.files[0]);
-                  } else {
-                    setPdfFile(null);
-                  }
-                }}
-                className="text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
-              />
-              {pdfFile && !isUploading && (
+              {/* Mode Selector Tabs */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    setPdfFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-                  }}
-                  className="text-xs text-slate-500 hover:text-rose-400"
+                  onClick={() => setPdfMode('url')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    pdfMode === 'url'
+                      ? 'bg-rose-500 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 >
-                  إلغاء الملف
+                  <LinkIcon className="w-3.5 h-3.5" />
+                  <span>رابط مباشر / درايف (فوري)</span>
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setPdfMode('upload')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    pdfMode === 'upload'
+                      ? 'bg-rose-500 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>رفع ملف من الجهاز</span>
+                </button>
+              </div>
             </div>
 
-            {/* Live Progress Bar for New Video Form */}
-            {isUploading && uploadProgress !== null && (
-              <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
-                <div className="flex justify-between text-xs text-slate-300 font-medium">
-                  <span>{uploadStatusText}</span>
-                  <span className="font-bold text-rose-400">{uploadProgress}%</span>
+            {/* Option 1: URL input (Instant & 100% reliable) */}
+            {pdfMode === 'url' ? (
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-slate-400">
+                  الصق رابط ملف الـ PDF (رابط Google Drive أو MediaFire أو أي رابط مباشر):
+                </p>
+                <input
+                  type="url"
+                  value={pdfUrlInput}
+                  onChange={(e) => setPdfUrlInput(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/... أو رابط PDF مباشر"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500 font-mono text-left dir-ltr"
+                  dir="ltr"
+                />
+              </div>
+            ) : (
+              /* Option 2: Direct File Upload */
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-400">
+                  اختر ملف PDF من جهازك ليتم رفعه إلى Firebase Cloud Storage:
+                </p>
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    disabled={isUploading}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setPdfFile(e.target.files[0]);
+                      } else {
+                        setPdfFile(null);
+                      }
+                    }}
+                    className="text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
+                  />
+                  {pdfFile && !isUploading && (
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {(pdfFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  )}
                 </div>
-                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-200"
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
-                </div>
+
+                {isUploading && uploadProgress !== null && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                    <div className="flex justify-between text-xs text-slate-300 font-medium">
+                      <span>{uploadStatusText}</span>
+                      <span className="font-bold text-rose-400">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-200"
+                        style={{ width: `${uploadProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -771,7 +841,7 @@ export const Admin: React.FC = () => {
             {isUploading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                <span>{uploadProgress !== null ? `جاري الرفع (${uploadProgress}%)` : 'جاري المعالجة...'}</span>
+                <span>{uploadProgress !== null ? `جاري الرفع (${uploadProgress}%)` : 'جاري الحفظ...'}</span>
               </>
             ) : (
               <>
@@ -833,13 +903,15 @@ export const Admin: React.FC = () => {
                             <button
                               onClick={() => {
                                 setEditingLessonPdf(lesson);
+                                setModalPdfMode('url');
+                                setModalPdfUrlInput(lesson.pdfUrl || '');
                                 setModalPdfFile(null);
                                 setModalUploadProgress(null);
                                 setModalStatusText('');
                               }}
                               className="text-[10px] text-slate-400 underline hover:text-white"
                             >
-                              تغيير
+                              تعديل
                             </button>
                             <button
                               onClick={() => {
@@ -857,6 +929,8 @@ export const Admin: React.FC = () => {
                           <button
                             onClick={() => {
                               setEditingLessonPdf(lesson);
+                              setModalPdfMode('url');
+                              setModalPdfUrlInput('');
                               setModalPdfFile(null);
                               setModalUploadProgress(null);
                               setModalStatusText('');
@@ -902,7 +976,7 @@ export const Admin: React.FC = () => {
         )}
       </div>
 
-      {/* Modal: Attach / Replace PDF on Existing Lesson with Progress Bar */}
+      {/* Modal: Attach / Replace PDF on Existing Lesson */}
       {editingLessonPdf && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
@@ -930,45 +1004,90 @@ export const Admin: React.FC = () => {
               <span className="font-bold text-white text-sm">{editingLessonPdf.title}</span>
             </div>
 
-            <form onSubmit={handleUpdateExistingPdf} className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-bold text-slate-300">
-                    اختر ملف الـ PDF:
-                  </label>
-                  {modalPdfFile && (
-                    <span className="text-[11px] text-slate-400 font-mono">
-                      {(modalPdfFile.size / (1024 * 1024)).toFixed(2)} MB
-                    </span>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  required
-                  disabled={isModalUploading}
-                  accept=".pdf,application/pdf"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setModalPdfFile(e.target.files[0]);
-                    }
-                  }}
-                  className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
-                />
-              </div>
+            {/* Modal Mode Selector */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setModalPdfMode('url')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  modalPdfMode === 'url'
+                    ? 'bg-rose-500 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <LinkIcon className="w-3.5 h-3.5" />
+                <span>رابط مباشر / درايف (فوري)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalPdfMode('upload')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  modalPdfMode === 'upload'
+                    ? 'bg-rose-500 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+                <span>رفع ملف من الجهاز</span>
+              </button>
+            </div>
 
-              {/* Modal Live Progress Bar */}
-              {isModalUploading && modalUploadProgress !== null && (
-                <div className="space-y-1.5 pt-2">
-                  <div className="flex justify-between text-xs text-slate-300 font-medium">
-                    <span>{modalStatusText}</span>
-                    <span className="font-bold text-rose-400">{modalUploadProgress}%</span>
+            <form onSubmit={handleUpdateExistingPdf} className="space-y-4">
+              {modalPdfMode === 'url' ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                    رابط الشيت (Google Drive / Direct PDF):
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={modalPdfUrlInput}
+                    onChange={(e) => setModalPdfUrlInput(e.target.value)}
+                    placeholder="https://drive.google.com/file/d/..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500 font-mono text-left dir-ltr"
+                    dir="ltr"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-slate-300">
+                      اختر ملف الـ PDF:
+                    </label>
+                    {modalPdfFile && (
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {(modalPdfFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
+                    )}
                   </div>
-                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-200"
-                      style={{ width: `${modalUploadProgress}%` }}
-                    ></div>
-                  </div>
+                  <input
+                    type="file"
+                    required
+                    disabled={isModalUploading}
+                    accept=".pdf,application/pdf"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setModalPdfFile(e.target.files[0]);
+                      }
+                    }}
+                    className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-rose-300 hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
+                  />
+
+                  {/* Modal Live Progress Bar */}
+                  {isModalUploading && modalUploadProgress !== null && (
+                    <div className="space-y-1.5 pt-2">
+                      <div className="flex justify-between text-xs text-slate-300 font-medium">
+                        <span>{modalStatusText}</span>
+                        <span className="font-bold text-rose-400">{modalUploadProgress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-200"
+                          style={{ width: `${modalUploadProgress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -987,18 +1106,18 @@ export const Admin: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={!modalPdfFile || isModalUploading}
+                  disabled={isModalUploading}
                   className="px-4 py-2 rounded-xl bg-rose-500 text-white text-xs font-bold hover:bg-rose-400 flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {isModalUploading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>جاري الرفع...</span>
+                      <span>جاري الحفظ...</span>
                     </>
                   ) : (
                     <>
-                      <UploadCloud className="w-4 h-4" />
-                      <span>رفع وحفظ الشيت</span>
+                      <CheckCircle className="w-4 h-4" />
+                      <span>حفظ الشيت للدرس</span>
                     </>
                   )}
                 </button>

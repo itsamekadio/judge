@@ -193,7 +193,7 @@ export const CoursesService = {
     }
   },
 
-  // Resumable chunked upload with live progress callback (0 - 100%)
+  // Resumable chunked upload with timeout & live progress
   uploadPdfSheetResumable: (
     file: File,
     onProgress?: (percent: number, transferredMB: string, totalMB: string) => void
@@ -201,13 +201,26 @@ export const CoursesService = {
     return new Promise((resolve, reject) => {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const storageRef = ref(storage, `sheets/${Date.now()}_${safeName}`);
+      
       const uploadTask = uploadBytesResumable(storageRef, file, {
         contentType: 'application/pdf'
       });
 
+      // 25 second timeout guard: If 0 bytes transferred in 25s, reject with clear actionable message
+      let hasStarted = false;
+      const timeoutId = setTimeout(() => {
+        if (!hasStarted) {
+          uploadTask.cancel();
+          reject(new Error('STORAGE_TIMEOUT: يبدو أن خدمة Cloud Storage غير مفعلة في Firebase Console أو ترفض الاتصال (CORS / Storage Rules). يمكنك تفعيلها أو استخدام خيار لصق الرابط المباشر.'));
+        }
+      }, 25000);
+
       uploadTask.on(
         'state_changed',
         (snapshot) => {
+          if (snapshot.bytesTransferred > 0) {
+            hasStarted = true;
+          }
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           const transferredMB = (snapshot.bytesTransferred / (1024 * 1024)).toFixed(1);
           const totalMB = (snapshot.totalBytes / (1024 * 1024)).toFixed(1);
@@ -216,10 +229,16 @@ export const CoursesService = {
           }
         },
         (error) => {
+          clearTimeout(timeoutId);
           console.error('Upload failed:', error);
-          reject(error);
+          if (error.code === 'storage/unauthorized') {
+            reject(new Error('STORAGE_UNAUTHORIZED: قواعد الأمان في Firebase Storage تمنع الرفع. تأكد من ضبط Storage Rules في Firebase Console إلى allow read, write: if true;'));
+          } else {
+            reject(error);
+          }
         },
         async () => {
+          clearTimeout(timeoutId);
           try {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
             resolve({ url, name: file.name });
@@ -258,8 +277,8 @@ export const CoursesService = {
   updateLessonPdf: async (lessonId: string, pdfUrl: string, pdfName: string): Promise<void> => {
     const lessonRef = doc(db, 'lessons', lessonId);
     await updateDoc(lessonRef, {
-      pdfUrl,
-      pdfName
+      pdfUrl: pdfUrl.trim(),
+      pdfName: pdfName.trim()
     });
   },
 
