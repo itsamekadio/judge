@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { CoursesService } from '../lib/coursesService';
 import { VideoPlayer } from '../components/VideoPlayer';
+import { fireConfetti } from '../lib/confetti';
 import { Curriculum, Chapter, Topic, Lesson } from '../types';
 import { 
   ArrowRight, 
@@ -11,18 +12,19 @@ import {
   ChevronDown,
   ChevronUp,
   PlayCircle, 
-  Clock, 
   CheckCircle2, 
   Folder,
   Layers,
   FileText,
   Download,
-  ExternalLink
+  ExternalLink,
+  Award
 } from 'lucide-react';
 
 export const LessonView: React.FC = () => {
   const { lessonId } = useParams<{ lessonId: string }>();
   const navigate = useNavigate();
+  const { currentUser, recordLastWatched, markLessonCompleted } = useAuth();
 
   // State filled by Firestore real-time subscriptions
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
@@ -32,6 +34,7 @@ export const LessonView: React.FC = () => {
 
   // Accordion state: map of topicId -> boolean (true = expanded)
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
+  const [showCelebrationBanner, setShowCelebrationBanner] = useState(false);
 
   useEffect(() => {
     const unsubCurrs = CoursesService.subscribeCurriculums((c) => setCurriculums(c));
@@ -53,6 +56,21 @@ export const LessonView: React.FC = () => {
   const activeCurriculum = curriculums.find((c) => c.id === currentLesson?.curriculumId);
   const activeTopic = topics.find((t) => t.id === currentLesson?.topicId);
 
+  // Automatically record this lesson as "Last Watched" for Continue Watching feature
+  useEffect(() => {
+    if (currentLesson && activeCurriculum && activeChapter) {
+      recordLastWatched({
+        lessonId: currentLesson.id,
+        title: currentLesson.title,
+        curriculumId: activeCurriculum.id,
+        curriculumTitle: activeCurriculum.title,
+        chapterTitle: activeChapter.title,
+        topicTitle: activeTopic?.title,
+        youtubeId: currentLesson.youtubeId
+      });
+    }
+  }, [currentLesson?.id, activeCurriculum?.id, activeChapter?.id, activeTopic?.id]);
+
   // Automatically expand the active topic when lesson loads
   useEffect(() => {
     if (currentLesson) {
@@ -69,6 +87,19 @@ export const LessonView: React.FC = () => {
       ...prev,
       [topicKey]: !prev[topicKey]
     }));
+  };
+
+  const isCompleted = !!currentUser?.completedLessons?.includes(lessonId || '');
+
+  // Handle auto-completion when student watches 80% or finishes video
+  const handleAutoCompleted = () => {
+    if (!lessonId) return;
+    if (!isCompleted) {
+      markLessonCompleted(lessonId);
+      fireConfetti();
+      setShowCelebrationBanner(true);
+      setTimeout(() => setShowCelebrationBanner(false), 7000);
+    }
   };
 
   // Other lessons in active chapter
@@ -134,6 +165,24 @@ export const LessonView: React.FC = () => {
         </Link>
       </div>
 
+      {/* Confetti Celebration Banner */}
+      {showCelebrationBanner && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-between gap-3 animate-bounce">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Award className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-white">أحسنت يا بطل! 🎉 تم إنهاء المحاضرة بنجاح</h4>
+              <p className="text-xs text-emerald-300/90">تم تسجيل هذا الدرس كمكتمل في سجل تقدمك الدراسي.</p>
+            </div>
+          </div>
+          <span className="text-xs bg-emerald-500 text-slate-950 font-black px-3 py-1 rounded-full">
+            100% مكتمل
+          </span>
+        </div>
+      )}
+
       {/* Grid: Video on Left, Topic Playlist Sidebar on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -143,19 +192,27 @@ export const LessonView: React.FC = () => {
             youtubeId={currentLesson.youtubeId}
             title={currentLesson.title}
             autoPlay={false}
+            onCompleted={handleAutoCompleted}
+            isCompleted={isCompleted}
           />
 
           {/* Video Title Details & PDF Sheet Download Banner */}
           <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
               <h1 className="text-xl font-bold text-white">{currentLesson.title}</h1>
+              
               <div className="flex items-center gap-2 flex-wrap">
-                {currentLesson.duration && (
-                  <span className="text-xs text-slate-400 flex items-center gap-1 font-mono">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{currentLesson.duration}</span>
+                {isCompleted ? (
+                  <span className="text-xs px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-500/20">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>مكتمل</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-medium">
+                    يكتمل تلقائياً عند المشاهدة
                   </span>
                 )}
+                
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-bold">
                   {activeChapter?.title}
                 </span>
@@ -245,7 +302,6 @@ export const LessonView: React.FC = () => {
           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-0.5">
             {chapterTopics.length > 0 ? (
               <>
-                {/* List each Topic as an Accordion */}
                 {chapterTopics.map((topic) => {
                   const topicLessons = chapterLessons.filter(l => l.topicId === topic.id);
                   const isExpanded = !!expandedTopics[topic.id];
@@ -253,7 +309,6 @@ export const LessonView: React.FC = () => {
 
                   return (
                     <div key={topic.id} className="rounded-xl border border-slate-800/80 bg-slate-950/40 overflow-hidden">
-                      {/* Topic Accordion Header */}
                       <button
                         type="button"
                         onClick={() => toggleTopic(topic.id)}
@@ -275,12 +330,12 @@ export const LessonView: React.FC = () => {
                         )}
                       </button>
 
-                      {/* Topic Videos (collapsible) */}
                       {isExpanded && (
                         <div className="p-1.5 space-y-1 bg-slate-900/40 border-t border-slate-800/60">
                           {topicLessons.length > 0 ? (
                             topicLessons.map((l, idx) => {
                               const isActive = l.id === lessonId;
+                              const isLessonDone = currentUser?.completedLessons?.includes(l.id);
 
                               return (
                                 <Link
@@ -293,7 +348,9 @@ export const LessonView: React.FC = () => {
                                   }`}
                                 >
                                   <div className="flex items-center gap-2">
-                                    {isActive ? (
+                                    {isLessonDone ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                    ) : isActive ? (
                                       <PlayCircle className="w-3.5 h-3.5 text-sky-400 shrink-0 fill-current" />
                                     ) : (
                                       <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-slate-400 text-[9px] flex items-center justify-center shrink-0">
@@ -319,7 +376,6 @@ export const LessonView: React.FC = () => {
                   );
                 })}
 
-                {/* Unassigned lessons in chapter */}
                 {unassignedLessons.length > 0 && (
                   <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 overflow-hidden">
                     <button
@@ -338,6 +394,8 @@ export const LessonView: React.FC = () => {
                       <div className="p-1.5 space-y-1 bg-slate-900/40 border-t border-slate-800/60">
                         {unassignedLessons.map((l, idx) => {
                           const isActive = l.id === lessonId;
+                          const isLessonDone = currentUser?.completedLessons?.includes(l.id);
+
                           return (
                             <Link
                               key={l.id}
@@ -349,7 +407,9 @@ export const LessonView: React.FC = () => {
                               }`}
                             >
                               <div className="flex items-center gap-2">
-                                {isActive ? (
+                                {isLessonDone ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                ) : isActive ? (
                                   <PlayCircle className="w-3.5 h-3.5 text-sky-400 shrink-0 fill-current" />
                                 ) : (
                                   <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-slate-400 text-[9px] flex items-center justify-center shrink-0">
@@ -367,9 +427,9 @@ export const LessonView: React.FC = () => {
                 )}
               </>
             ) : (
-              /* Fallback when no topics exist in the chapter */
               chapterLessons.map((l, idx) => {
                 const isActive = l.id === lessonId;
+                const isLessonDone = currentUser?.completedLessons?.includes(l.id);
 
                 return (
                   <Link
@@ -382,7 +442,9 @@ export const LessonView: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      {isActive ? (
+                      {isLessonDone ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : isActive ? (
                         <PlayCircle className="w-4 h-4 text-sky-400 shrink-0 fill-current" />
                       ) : (
                         <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-400 text-[10px] flex items-center justify-center shrink-0">

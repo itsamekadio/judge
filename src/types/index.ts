@@ -2,6 +2,17 @@
 
 export type UserRole = 'admin' | 'student';
 
+export interface LastWatchedLesson {
+  lessonId: string;
+  title: string;
+  curriculumId: string;
+  curriculumTitle: string;
+  chapterTitle: string;
+  topicTitle?: string;
+  youtubeId: string;
+  updatedAt?: any;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -9,6 +20,8 @@ export interface UserProfile {
   role: UserRole;
   curriculumId?: string;
   curriculumTitle?: string;
+  completedLessons?: string[];          // List of lesson IDs completed by the student
+  lastWatchedLesson?: LastWatchedLesson; // Last active lesson for resume
   createdAt?: any;
 }
 
@@ -49,8 +62,7 @@ export interface Lesson {
   title: string;
   youtubeId: string;
   order: number;
-  duration?: string;
-  pdfUrl?: string;     // Optional PDF sheet URL (Firebase Storage)
+  pdfUrl?: string;     // Optional PDF sheet URL
   pdfName?: string;    // Optional original file name
   createdAt?: any;
 }

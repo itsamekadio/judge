@@ -1,20 +1,108 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { extractYouTubeId } from '../lib/coursesService';
-import { Play, AlertCircle, Maximize2 } from 'lucide-react';
+import { Play, AlertCircle } from 'lucide-react';
 
 interface VideoPlayerProps {
   youtubeId: string;
   title?: string;
   autoPlay?: boolean;
+  onCompleted?: () => void;
+  isCompleted?: boolean;
+}
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   youtubeId, 
   title, 
-  autoPlay = false 
+  autoPlay = false,
+  onCompleted,
+  isCompleted = false
 }) => {
   const [hasStarted, setHasStarted] = useState(autoPlay);
   const cleanId = extractYouTubeId(youtubeId);
+  const playerRef = useRef<any>(null);
+  const intervalRef = useRef<any>(null);
+  const hasTriggeredRef = useRef<boolean>(isCompleted);
+
+  useEffect(() => {
+    hasTriggeredRef.current = isCompleted;
+  }, [isCompleted]);
+
+  // Load YouTube IFrame Player API script if not already present
+  useEffect(() => {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+  }, []);
+
+  // Initialize YT.Player when video has started
+  useEffect(() => {
+    if (!hasStarted || !cleanId) return;
+
+    const initPlayer = () => {
+      if (window.YT && window.YT.Player) {
+        playerRef.current = new window.YT.Player(`yt-player-${cleanId}`, {
+          events: {
+            onStateChange: (event: any) => {
+              // 0 = YT.PlayerState.ENDED
+              if (event.data === 0) {
+                if (!hasTriggeredRef.current && onCompleted) {
+                  hasTriggeredRef.current = true;
+                  onCompleted();
+                }
+              }
+              // 1 = YT.PlayerState.PLAYING
+              if (event.data === 1) {
+                if (!intervalRef.current) {
+                  intervalRef.current = setInterval(() => {
+                    try {
+                      if (playerRef.current && playerRef.current.getCurrentTime && playerRef.current.getDuration) {
+                        const current = playerRef.current.getCurrentTime();
+                        const duration = playerRef.current.getDuration();
+                        if (duration > 0 && (current / duration) >= 0.8) {
+                          if (!hasTriggeredRef.current && onCompleted) {
+                            hasTriggeredRef.current = true;
+                            onCompleted();
+                          }
+                        }
+                      }
+                    } catch (e) {}
+                  }, 1500);
+                }
+              } else {
+                if (intervalRef.current) {
+                  clearInterval(intervalRef.current);
+                  intervalRef.current = null;
+                }
+              }
+            }
+          }
+        });
+      }
+    };
+
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      window.onYouTubeIframeAPIReady = initPlayer;
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [hasStarted, cleanId, onCompleted]);
 
   if (!cleanId) {
     return (
@@ -28,8 +116,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     );
   }
 
-  // Embed URL with required parameters: rel=0, modestbranding=1, iv_load_policy=3
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${cleanId}?rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1${
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${cleanId}?enablejsapi=1&rel=0&modestbranding=1&iv_load_policy=3${
     hasStarted ? '&autoplay=1' : ''
   }`;
 
@@ -38,14 +125,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* 16:9 aspect ratio container */}
       <div className="relative w-full aspect-video">
         {!hasStarted ? (
-          // Custom Sleek Thumbnail Cover
+          // Custom Thumbnail Cover with Play Button
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gradient-to-t from-slate-950 via-slate-900/90 to-slate-900">
             <img 
               src={`https://img.youtube.com/vi/${cleanId}/maxresdefault.jpg`} 
               alt={title || "Video preview"}
               className="absolute inset-0 w-full h-full object-cover opacity-40 blur-xs transition-transform duration-700 group-hover:scale-105"
               onError={(e) => {
-                // Fallback to hqdefault if maxresdefault doesn't exist
                 (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${cleanId}/hqdefault.jpg`;
               }}
             />
@@ -69,6 +155,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         ) : (
           <iframe
+            id={`yt-player-${cleanId}`}
             src={embedUrl}
             title={title || "YouTube video player"}
             className="absolute inset-0 w-full h-full border-0"

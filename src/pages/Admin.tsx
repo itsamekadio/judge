@@ -50,13 +50,12 @@ export const Admin: React.FC = () => {
   const [newTopicTitle, setNewTopicTitle] = useState('');
   const [topicSuccess, setTopicSuccess] = useState('');
 
-  // 4. Add Video state
+  // 4. Add Video state (duration completely removed)
   const [selectedCurriculumId, setSelectedCurriculumId] = useState('');
   const [selectedChapterId, setSelectedChapterId] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState('');
   const [videoTitle, setVideoTitle] = useState('');
   const [youtubeInput, setYoutubeInput] = useState('');
-  const [videoDuration, setVideoDuration] = useState('30 دقيقة');
   const [videoSuccess, setVideoSuccess] = useState('');
 
   // PDF Attachment (Dual Mode: URL or Upload)
@@ -255,7 +254,6 @@ export const Admin: React.FC = () => {
         topicId: selectedTopicId || '',
         title: videoTitle.trim(),
         youtubeId: cleanYt,
-        duration: videoDuration || '30 دقيقة',
         order: filteredLessons.length + 1,
         pdfUrl: finalPdfUrl,
         pdfName: finalPdfName
@@ -356,7 +354,7 @@ export const Admin: React.FC = () => {
         </div>
       </div>
 
-      {/* Global Error Banner with clear advice */}
+      {/* Global Error Banner */}
       {globalError && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm space-y-2">
           <div className="flex items-center justify-between">
@@ -367,9 +365,6 @@ export const Admin: React.FC = () => {
             <button onClick={() => setGlobalError(null)} className="text-xs text-slate-400 underline">إخفاء</button>
           </div>
           <p className="text-xs break-all leading-relaxed">{globalError}</p>
-          <div className="p-2.5 rounded-xl bg-slate-950/80 text-xs text-amber-300 border border-amber-500/20">
-            💡 <strong>حل سريع وفوري بدون انتظار:</strong> يمكنك استخدام خيار <strong>"رابط الشيت (جوجل درايف / مباشر)"</strong> ولصق رابط الملف مباشرة في ثانية واحدة!
-          </div>
         </div>
       )}
 
@@ -604,7 +599,7 @@ export const Admin: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Add Video with PDF Sheet (Dual Option: Drive / Direct Link OR Direct Upload) */}
+      {/* 4. Add Video (No duration field) */}
       <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-amber-500/40 space-y-6">
         <div className="flex items-center gap-2 text-amber-400">
           <Video className="w-6 h-6" />
@@ -721,7 +716,7 @@ export const Admin: React.FC = () => {
 
           </div>
 
-          {/* Dual PDF Sheet Attachment: Instant URL OR File Upload */}
+          {/* Dual PDF Sheet Attachment */}
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="block text-xs font-bold text-slate-200 flex items-center gap-2">
@@ -758,7 +753,6 @@ export const Admin: React.FC = () => {
               </div>
             </div>
 
-            {/* Option 1: URL input (Instant & 100% reliable) */}
             {pdfMode === 'url' ? (
               <div className="space-y-1.5">
                 <p className="text-[11px] text-slate-400">
@@ -774,7 +768,6 @@ export const Admin: React.FC = () => {
                 />
               </div>
             ) : (
-              /* Option 2: Direct File Upload */
               <div className="space-y-2">
                 <p className="text-[11px] text-slate-400">
                   اختر ملف PDF من جهازك ليتم رفعه إلى Firebase Cloud Storage:

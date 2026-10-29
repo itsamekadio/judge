@@ -10,10 +10,12 @@ import {
   doc, 
   getDoc, 
   setDoc, 
+  updateDoc,
+  arrayUnion,
   serverTimestamp 
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { UserProfile, UserRole } from '../types';
+import { UserProfile, UserRole, LastWatchedLesson } from '../types';
 
 interface AuthContextType {
   currentUser: UserProfile | null;
@@ -24,6 +26,8 @@ interface AuthContextType {
   register: (email: string, pass: string, fullName: string, curriculumId?: string, curriculumTitle?: string) => Promise<UserProfile>;
   logout: () => Promise<void>;
   updateCurriculum: (curriculumId: string, curriculumTitle: string) => Promise<void>;
+  recordLastWatched: (lesson: LastWatchedLesson) => Promise<void>;
+  markLessonCompleted: (lessonId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,7 +38,6 @@ export const DEFAULT_ADMIN_PASS = '00000000';
 const LOCAL_STORAGE_KEY = 'judge_auth_user';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Synchronous initialization from localStorage for instantaneous page rendering
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -63,6 +66,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: isDefaultAdmin ? 'admin' : (data.role || 'student'),
           curriculumId: data.curriculumId,
           curriculumTitle: data.curriculumTitle,
+          completedLessons: data.completedLessons || [],
+          lastWatchedLesson: data.lastWatchedLesson,
           createdAt: data.createdAt
         };
         setCurrentUser(profile);
@@ -74,6 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email,
           fullName: isDefaultAdmin ? 'Eng. Abdelrahman Elkady / المهندس عبد الرحمن القاضي' : 'طالب',
           role: isDefaultAdmin ? 'admin' : 'student',
+          completedLessons: [],
           createdAt: serverTimestamp()
         };
         setDoc(userRef, profile, { merge: true }).catch(() => {});
@@ -82,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return profile;
       }
     } catch (err) {
-      console.warn('Firestore user profile sync warning (rules notice):', err);
+      console.warn('Firestore user profile sync warning:', err);
     }
   };
 
@@ -100,25 +106,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Strict Login
   const login = async (email: string, pass: string): Promise<UserProfile> => {
     const cleanEmail = email.trim().toLowerCase();
     const isDefaultAdmin = cleanEmail === DEFAULT_ADMIN_EMAIL.toLowerCase();
 
-    // 1. Authenticate with Firebase Authentication
     try {
       const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       const uid = cred.user.uid;
       
-      // Default initial profile from auth
       let profile: UserProfile = {
         uid,
         email: cleanEmail,
         fullName: isDefaultAdmin ? 'Eng. Abdelrahman Elkady' : cleanEmail.split('@')[0],
-        role: isDefaultAdmin ? 'admin' : 'student'
+        role: isDefaultAdmin ? 'admin' : 'student',
+        completedLessons: []
       };
 
-      // Try fetching extra profile fields from Firestore without letting permission errors crash login
       try {
         const userRef = doc(db, 'users', uid);
         const snap = await getDoc(userRef);
@@ -129,11 +132,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             fullName: data.fullName || profile.fullName,
             role: isDefaultAdmin ? 'admin' : (data.role || 'student'),
             curriculumId: data.curriculumId,
-            curriculumTitle: data.curriculumTitle
+            curriculumTitle: data.curriculumTitle,
+            completedLessons: data.completedLessons || [],
+            lastWatchedLesson: data.lastWatchedLesson
           };
         }
       } catch (firestoreErr) {
-        console.warn('Firestore profile read permission notice:', firestoreErr);
+        console.warn('Firestore profile read notice:', firestoreErr);
       }
 
       setCurrentUser(profile);
@@ -141,7 +146,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return profile;
 
     } catch (firebaseErr: any) {
-      // If credentials belong to default admin and it wasn't registered in Firebase Auth yet
       if (isDefaultAdmin) {
         if (pass === DEFAULT_ADMIN_PASS) {
           try {
@@ -151,6 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: cleanEmail,
               fullName: 'Eng. Abdelrahman Elkady / المهندس عبد الرحمن القاضي',
               role: 'admin',
+              completedLessons: [],
               createdAt: serverTimestamp()
             };
             setDoc(doc(db, 'users', cred.user.uid), adminProfile).catch(() => {});
@@ -162,19 +167,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               uid: 'admin-elkady',
               email: cleanEmail,
               fullName: 'Eng. Abdelrahman Elkady / المهندس عبد الرحمن القاضي',
-              role: 'admin'
+              role: 'admin',
+              completedLessons: []
             };
             setCurrentUser(adminProfile);
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(adminProfile));
             return adminProfile;
           }
         } else {
-          // Admin typed the wrong password!
           throw new Error('كلمة المرور غير صحيحة لحساب المشرف / Incorrect admin password');
         }
       }
 
-      // Check standard Firebase Auth errors - strictly report them!
       if (
         firebaseErr.code === 'auth/wrong-password' || 
         firebaseErr.code === 'auth/invalid-credential' ||
@@ -193,7 +197,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Strict Registration
   const register = async (
     email: string, 
     pass: string, 
@@ -206,7 +209,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const role: UserRole = isDefaultAdmin ? 'admin' : 'student';
 
     try {
-      // 1. Create account in Firebase Authentication
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
       const uid = cred.user.uid;
 
@@ -217,10 +219,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role,
         curriculumId,
         curriculumTitle,
+        completedLessons: [],
         createdAt: new Date().toISOString()
       };
 
-      // 2. Save profile in Firestore users collection (safely caught if rules are still locked)
       try {
         const userRef = doc(db, 'users', uid);
         await setDoc(userRef, {
@@ -229,10 +231,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role,
           curriculumId: curriculumId || '',
           curriculumTitle: curriculumTitle || '',
+          completedLessons: [],
           createdAt: serverTimestamp()
         });
       } catch (firestoreErr) {
-        console.warn('Firestore profile write permission notice (update Firestore rules):', firestoreErr);
+        console.warn('Firestore profile write notice:', firestoreErr);
       }
 
       setCurrentUser(profile);
@@ -272,6 +275,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Record last watched lesson for Continue Watching banner
+  const recordLastWatched = async (lesson: LastWatchedLesson) => {
+    if (!currentUser) return;
+    const updated: UserProfile = {
+      ...currentUser,
+      lastWatchedLesson: lesson
+    };
+    setCurrentUser(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+
+    if (currentUser.uid) {
+      try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+          lastWatchedLesson: {
+            ...lesson,
+            updatedAt: serverTimestamp()
+          }
+        });
+      } catch (e) {
+        console.warn('Error recording last watched:', e);
+      }
+    }
+  };
+
+  // Automatically mark lesson as completed (at 80% or video end)
+  const markLessonCompleted = async (lessonId: string) => {
+    if (!currentUser) return;
+    const currentCompleted = currentUser.completedLessons || [];
+    if (currentCompleted.includes(lessonId)) return; // already completed
+
+    const updatedList = [...currentCompleted, lessonId];
+    const updatedUser: UserProfile = {
+      ...currentUser,
+      completedLessons: updatedList
+    };
+    setCurrentUser(updatedUser);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedUser));
+
+    if (currentUser.uid) {
+      try {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+          completedLessons: arrayUnion(lessonId)
+        });
+      } catch (e) {
+        console.warn('Error saving completed lesson:', e);
+      }
+    }
+  };
+
   const isAdmin = currentUser?.role === 'admin' || currentUser?.email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase();
 
   return (
@@ -284,7 +338,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
-        updateCurriculum
+        updateCurriculum,
+        recordLastWatched,
+        markLessonCompleted
       }}
     >
       {children}

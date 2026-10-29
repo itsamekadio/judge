@@ -3,7 +3,7 @@ import {
   doc, 
   setDoc, 
   addDoc, 
-  updateDoc,
+  updateDoc, 
   deleteDoc, 
   query, 
   orderBy, 
@@ -206,12 +206,11 @@ export const CoursesService = {
         contentType: 'application/pdf'
       });
 
-      // 25 second timeout guard: If 0 bytes transferred in 25s, reject with clear actionable message
       let hasStarted = false;
       const timeoutId = setTimeout(() => {
         if (!hasStarted) {
           uploadTask.cancel();
-          reject(new Error('STORAGE_TIMEOUT: يبدو أن خدمة Cloud Storage غير مفعلة في Firebase Console أو ترفض الاتصال (CORS / Storage Rules). يمكنك تفعيلها أو استخدام خيار لصق الرابط المباشر.'));
+          reject(new Error('STORAGE_TIMEOUT: يبدو أن خدمة Cloud Storage غير مفعلة في Firebase Console أو ترفض الاتصال. يمكنك استخدام خيار لصق الرابط المباشر.'));
         }
       }, 25000);
 
@@ -232,7 +231,7 @@ export const CoursesService = {
           clearTimeout(timeoutId);
           console.error('Upload failed:', error);
           if (error.code === 'storage/unauthorized') {
-            reject(new Error('STORAGE_UNAUTHORIZED: قواعد الأمان في Firebase Storage تمنع الرفع. تأكد من ضبط Storage Rules في Firebase Console إلى allow read, write: if true;'));
+            reject(new Error('STORAGE_UNAUTHORIZED: قواعد الأمان في Firebase Storage تمنع الرفع.'));
           } else {
             reject(error);
           }
@@ -259,7 +258,6 @@ export const CoursesService = {
       title: data.title.trim(),
       youtubeId: cleanYt,
       order: Number(data.order) || 1,
-      duration: data.duration || '',
       pdfUrl: data.pdfUrl || '',
       pdfName: data.pdfName || '',
       createdAt: serverTimestamp()
